@@ -35,5 +35,8 @@ const submit = () => {
             </div>
             <PrimaryButton class="w-full justify-center rounded-xl bg-pineto-600 py-3 text-sm font-bold shadow-lg shadow-pineto-600/25 hover:bg-pineto-700 focus:bg-pineto-700 active:bg-pineto-950" :class="{ 'opacity-50': form.processing }" :disabled="form.processing">Accedi all'area admin</PrimaryButton>
         </form>
+        <div class="mt-6 text-center">
+            <a :href="route('login')" class="text-sm font-semibold text-pineto-600 hover:text-pineto-700">Accesso utenti</a>
+        </div>
     </GuestLayout>
 </template>

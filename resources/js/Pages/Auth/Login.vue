@@ -14,9 +14,9 @@ const submit = () => form.post(route('login'), { onFinish: () => form.reset('pas
 
 <template>
     <GuestLayout>
-        <Head title="Accedi" />
+        <Head title="Accesso utenti" />
         <div class="mb-6">
-            <h1 class="text-2xl font-bold text-pineto-950">Bentornato</h1>
+            <h1 class="text-2xl font-bold text-pineto-950">Accesso utenti</h1>
             <p class="mt-1 text-sm text-slate-500">Accedi al tuo profilo personale.</p>
         </div>
         <div v-if="status" class="mb-4 rounded-xl bg-emerald-50 p-3 text-sm font-medium text-emerald-700">{{ status }}</div>
@@ -37,8 +37,8 @@ const submit = () => form.post(route('login'), { onFinish: () => form.reset('pas
             <label class="flex items-center gap-2 text-sm text-slate-600"><Checkbox name="remember" v-model:checked="form.remember" /><span>Ricordami su questo dispositivo</span></label>
             <PrimaryButton class="w-full justify-center rounded-xl bg-pineto-600 py-3 text-sm font-bold shadow-lg shadow-pineto-600/25 hover:bg-pineto-700 focus:bg-pineto-700 active:bg-pineto-950" :class="{ 'opacity-50': form.processing }" :disabled="form.processing">Accedi</PrimaryButton>
         </form>
-        <div class="mt-6 rounded-xl bg-pineto-50 p-3 text-center text-xs text-pineto-700">
-            Account demo: <strong>luca.marrone@pinetocalcio.test</strong><br>password: <strong>password</strong>
+        <div class="mt-6 text-center">
+            <a :href="route('admin.login')" class="text-sm font-semibold text-pineto-600 hover:text-pineto-700">Accesso admin</a>
         </div>
     </GuestLayout>
 </template>
