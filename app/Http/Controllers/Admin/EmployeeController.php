@@ -3,8 +3,8 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
-use App\Models\EmployeeProfile;
 use App\Models\User;
+use App\Notifications\EmployeeCredentials;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
@@ -13,6 +13,7 @@ use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response;
 use Symfony\Component\HttpFoundation\StreamedResponse;
@@ -31,13 +32,26 @@ class EmployeeController extends Controller
             ->with('employeeProfile')
             ->when($filters['search'] ?? null, function ($query, string $search) {
                 $query->where(function ($query) use ($search) {
-                    $query->where('name', 'like', '%'.$search.'%')
-                        ->orWhere('email', 'like', '%'.$search.'%')
+                    $query->where('email', 'like', '%'.$search.'%')
                         ->orWhereHas('employeeProfile', fn ($profile) => $profile->where('tax_code', 'like', '%'.$search.'%'));
+
+                    $nameParts = preg_split('/\s+/u', trim($search), -1, PREG_SPLIT_NO_EMPTY) ?: [];
+
+                    if ($nameParts !== []) {
+                        $query->orWhere(function ($query) use ($nameParts) {
+                            foreach ($nameParts as $namePart) {
+                                $query->where(function ($query) use ($namePart) {
+                                    $query->where('first_name', 'like', '%'.$namePart.'%')
+                                        ->orWhere('last_name', 'like', '%'.$namePart.'%');
+                                });
+                            }
+                        });
+                    }
                 });
             })
             ->when($filters['type'] ?? null, fn ($query, string $type) => $query->whereHas('employeeProfile', fn ($profile) => $profile->where('type', $type)))
-            ->orderBy('name')
+            ->orderBy('last_name')
+            ->orderBy('first_name')
             ->paginate(15)
             ->withQueryString()
             ->through(fn (User $user) => $this->employeeData($user));
@@ -62,13 +76,15 @@ class EmployeeController extends Controller
     {
         $data = $this->validatedData($request);
 
-        DB::transaction(function () use ($data) {
+        $user = DB::transaction(function () use ($data) {
             $user = User::create([
-                'name' => $data['name'],
+                'first_name' => $data['first_name'],
+                'last_name' => $data['last_name'],
                 'email' => $data['email'],
                 'role' => 'employee',
                 'password' => Hash::make($data['password']),
                 'must_change_password' => true,
+                'temporary_password' => $data['password'],
             ]);
 
             $profileData = $this->profileData($data);
@@ -78,6 +94,8 @@ class EmployeeController extends Controller
             }
 
             $user->employeeProfile()->create($profileData);
+
+            return $user;
         });
 
         return redirect()->route('admin.employees.index')->with('success', 'Profilo creato correttamente.');
@@ -102,13 +120,15 @@ class EmployeeController extends Controller
 
         DB::transaction(function () use ($data, $employee, &$newContractPath) {
             $userData = [
-                'name' => $data['name'],
+                'first_name' => $data['first_name'],
+                'last_name' => $data['last_name'],
                 'email' => $data['email'],
             ];
 
             if ($data['password'] !== null) {
                 $userData['password'] = Hash::make($data['password']);
                 $userData['must_change_password'] = true;
+                $userData['temporary_password'] = $data['password'];
             }
 
             $employee->update($userData);
@@ -137,6 +157,24 @@ class EmployeeController extends Controller
         return redirect()->route('admin.employees.index')->with('success', 'Profilo eliminato correttamente.');
     }
 
+    public function sendCredentials(User $employee): RedirectResponse
+    {
+        $this->ensureEmployee($employee);
+
+        $temporaryPassword = $employee->temporary_password;
+
+        if (! $employee->must_change_password || ! $temporaryPassword
+            || ! Hash::check($temporaryPassword, $employee->password)) {
+            throw ValidationException::withMessages([
+                'credentials' => 'Imposta e salva una password di primo accesso nel profilo prima di inviare le credenziali.',
+            ]);
+        }
+
+        $employee->notify(new EmployeeCredentials($temporaryPassword));
+
+        return redirect()->route('admin.employees.index')->with('success', 'Credenziali inviate a '.$employee->email.'.');
+    }
+
     public function contract(User $employee): StreamedResponse
     {
         $this->ensureEmployee($employee);
@@ -157,7 +195,8 @@ class EmployeeController extends Controller
     private function validatedData(Request $request, ?User $employee = null): array
     {
         return $request->validate([
-            'name' => ['required', 'string', 'max:255'],
+            'first_name' => ['required', 'string', 'max:255'],
+            'last_name' => ['required', 'string', 'max:255'],
             'email' => ['required', 'string', 'email', 'max:255', Rule::unique('users')->ignore($employee)],
             'password' => [$employee ? 'nullable' : 'required', 'string', 'min:12', 'max:255'],
             'type' => ['required', Rule::in(['employee', 'athlete'])],
@@ -206,7 +245,10 @@ class EmployeeController extends Controller
 
         return [
             'id' => $user->id,
-            'name' => $user->name,
+            'first_name' => $user->first_name,
+            'last_name' => $user->last_name,
+            'full_name' => $user->full_name,
+            'display_name' => $user->display_name,
             'email' => $user->email,
             'type' => $profile?->type,
             'tax_code' => $profile?->tax_code,

@@ -32,10 +32,10 @@ const formatDate = (date) => {
                     <p class="text-xs font-bold uppercase tracking-[0.2em] text-white/75">Pineto Calcio Servizi</p>
                     <div class="mt-5 flex items-center gap-4">
                         <div class="flex h-16 w-16 items-center justify-center rounded-2xl bg-white text-xl font-black text-pineto-700 shadow-lg">
-                            {{ $page.props.auth.user.name.slice(0, 1) }}
+                            {{ $page.props.auth.user.full_name.slice(0, 1) }}
                         </div>
                         <div>
-                            <h1 class="text-2xl font-bold leading-tight">{{ $page.props.auth.user.name }}</h1>
+                            <h1 class="text-2xl font-bold leading-tight">{{ $page.props.auth.user.full_name }}</h1>
                             <p class="mt-1 text-sm text-white/80">{{ profile?.position || 'Profilo in aggiornamento' }}</p>
                         </div>
                     </div>

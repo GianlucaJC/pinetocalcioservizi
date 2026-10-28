@@ -3,14 +3,35 @@
 namespace Tests\Feature\Admin;
 
 use App\Models\User;
+use App\Notifications\EmployeeCredentials;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
 
 class EmployeeManagementTest extends TestCase
 {
     use RefreshDatabase;
+
+    public function test_name_migration_splits_first_name_from_the_full_surname(): void
+    {
+        $user = User::factory()->create([
+            'first_name' => 'Mario',
+            'last_name' => 'De Santis',
+        ]);
+        $migration = require database_path('migrations/2026_10_28_000001_split_user_names.php');
+
+        $migration->down();
+        DB::table('users')->where('id', $user->id)->update(['name' => 'Mario De Santis']);
+        $migration->up();
+
+        $user->refresh();
+        $this->assertSame('Mario', $user->first_name);
+        $this->assertSame('De Santis', $user->last_name);
+    }
 
     protected function setUp(): void
     {
@@ -26,6 +47,90 @@ class EmployeeManagementTest extends TestCase
     {
         $this->get(route('admin.employees.index'))
             ->assertRedirect(route('admin.login'));
+    }
+
+    public function test_credentials_are_sent_only_when_admin_requests_them(): void
+    {
+        Notification::fake();
+        $employee = User::factory()->create([
+            'role' => 'employee',
+            'first_name' => 'Mario',
+            'last_name' => 'Rossi',
+            'password' => 'Alb-casa-42!',
+            'temporary_password' => 'Alb-casa-42!',
+            'must_change_password' => true,
+        ]);
+        $previousPasswordHash = $employee->password;
+
+        $this->post(route('admin.login.store'), [
+            'email' => 'admin@pinetocalcio.test',
+            'password' => 'CorrectAdminPassword123!',
+        ]);
+
+        $this->post(route('admin.employees.send-credentials', $employee))
+            ->assertRedirect(route('admin.employees.index'));
+
+        $employee->refresh();
+        $this->assertTrue($employee->must_change_password);
+        $this->assertSame($previousPasswordHash, $employee->password);
+        $this->assertFalse(Hash::check('password', $employee->password));
+        Notification::assertSentTo($employee, EmployeeCredentials::class, function ($notification, $channels) use ($employee) {
+            return in_array('mail', $channels, true)
+                && $notification->temporaryPassword === 'Alb-casa-42!'
+                && Hash::check($notification->temporaryPassword, $employee->password)
+                && $employee->temporary_password === $notification->temporaryPassword;
+        });
+        $this->assertNotSame('Alb-casa-42!', DB::table('users')->where('id', $employee->id)->value('temporary_password'));
+        $this->assertArrayNotHasKey('temporary_password', $employee->toArray());
+    }
+
+    public function test_credentials_email_has_no_english_action_footer(): void
+    {
+        $employee = User::factory()->create(['first_name' => 'Mario']);
+        $mail = (new EmployeeCredentials('Alb-casa-42!'))->toMail($employee);
+        $html = $mail->render();
+
+        $this->assertStringContainsString('Alb-casa-42!', $html);
+        $this->assertStringContainsString('Accedi al portale', $html);
+        $this->assertStringContainsString('Non rispondere', $html);
+        $this->assertStringNotContainsString('having trouble clicking', $html);
+        $this->assertStringNotContainsString('copy and paste', $html);
+    }
+
+    public function test_missing_temporary_password_does_not_replace_password_or_send_email(): void
+    {
+        Notification::fake();
+        $employee = User::factory()->create(['must_change_password' => true]);
+        $previousPasswordHash = $employee->password;
+        $this->post(route('admin.login.store'), [
+            'email' => 'admin@pinetocalcio.test',
+            'password' => 'CorrectAdminPassword123!',
+        ]);
+
+        $this->post(route('admin.employees.send-credentials', $employee))
+            ->assertSessionHasErrors('credentials');
+
+        $this->assertSame($previousPasswordHash, $employee->fresh()->password);
+        Notification::assertNothingSent();
+    }
+
+    public function test_employee_list_is_ordered_by_last_name_then_first_name(): void
+    {
+        User::factory()->create(['role' => 'employee', 'first_name' => 'Zoe', 'last_name' => 'Alpha']);
+        User::factory()->create(['role' => 'employee', 'first_name' => 'Anna', 'last_name' => 'Alpha']);
+        User::factory()->create(['role' => 'employee', 'first_name' => 'Mario', 'last_name' => 'Beta']);
+
+        $this->post(route('admin.login.store'), [
+            'email' => 'admin@pinetocalcio.test',
+            'password' => 'CorrectAdminPassword123!',
+        ]);
+
+        $this->get(route('admin.employees.index'))
+            ->assertOk()
+            ->assertInertia(fn ($page) => $page
+                ->where('employees.data.0.display_name', 'Alpha Anna')
+                ->where('employees.data.1.display_name', 'Alpha Zoe')
+                ->where('employees.data.2.display_name', 'Beta Mario'));
     }
 
     public function test_admin_and_user_sessions_use_different_cookies(): void
@@ -69,6 +174,7 @@ class EmployeeManagementTest extends TestCase
     public function test_admin_can_create_update_filter_and_delete_an_athlete(): void
     {
         Storage::fake('local');
+        Notification::fake();
 
         $this->post(route('admin.login.store'), [
             'email' => 'admin@pinetocalcio.test',
@@ -76,7 +182,8 @@ class EmployeeManagementTest extends TestCase
         ]);
 
         $this->post(route('admin.employees.store'), [
-            'name' => 'Mario Rossi',
+            'first_name' => 'Mario',
+            'last_name' => 'Rossi',
             'email' => 'mario.rossi@pinetocalcio.test',
             'password' => 'EmployeePassword123!',
             'type' => 'athlete',
@@ -105,19 +212,26 @@ class EmployeeManagementTest extends TestCase
             'tax_code' => 'RSSMRA90A01A000A',
         ]);
         $this->assertTrue($employee->must_change_password);
+        $this->assertSame('EmployeePassword123!', $employee->temporary_password);
+        $this->assertSame('Mario Rossi', $employee->full_name);
+        Notification::assertNothingSent();
 
-        $this->get(route('admin.employees.index', ['search' => 'Mario', 'type' => 'athlete']))
+        $this->get(route('admin.employees.index', ['search' => 'Mario Rossi', 'type' => 'athlete']))
             ->assertOk()
             ->assertInertia(fn ($page) => $page
                 ->component('Admin/Employees/Index')
                 ->has('employees.data', 1)
-                ->where('employees.data.0.name', 'Mario Rossi'));
+                ->where('employees.data.0.full_name', 'Mario Rossi')
+                ->where('employees.data.0.display_name', 'Rossi Mario')
+                ->where('employees.data.0.first_name', 'Mario')
+                ->where('employees.data.0.last_name', 'Rossi'));
 
         $employee->update(['must_change_password' => false]);
 
         $this->post(route('admin.employees.update', $employee), [
             '_method' => 'PUT',
-            'name' => 'Mario Rossi',
+            'first_name' => 'Mario',
+            'last_name' => 'Rossi',
             'email' => 'mario.rossi@pinetocalcio.test',
             'password' => 'NewTemporaryPassword456!',
             'type' => 'athlete',
@@ -154,6 +268,14 @@ class EmployeeManagementTest extends TestCase
             'notes' => 'Tesseramento rinnovato.',
         ]);
         $this->assertTrue($employee->fresh()->must_change_password);
+        $this->assertSame('NewTemporaryPassword456!', $employee->fresh()->temporary_password);
+        Notification::assertNothingSent();
+        $this->post(route('admin.employees.send-credentials', $employee))
+            ->assertRedirect(route('admin.employees.index'));
+        Notification::assertSentTo($employee, EmployeeCredentials::class, function ($notification) use ($employee) {
+            return $notification->temporaryPassword === 'NewTemporaryPassword456!'
+                && Hash::check($notification->temporaryPassword, $employee->fresh()->password);
+        });
         Storage::disk('local')->assertExists($employee->fresh()->employeeProfile->work_contract_path);
         $this->get(route('admin.employees.contract', $employee))->assertOk();
 

@@ -101,13 +101,13 @@ class PayslipBatchController extends Controller
         return Inertia::render('Admin/Payslips/Review', [
             'batch' => $this->batchData($batch),
             'deliveries' => $batch->documents()
-                ->with('employeeProfile.user:id,name,email')
+                ->with('employeeProfile.user:id,first_name,last_name,email')
                 ->orderBy('tax_code')
                 ->paginate(self::DELIVERIES_PER_PAGE)
                 ->withQueryString()
                 ->through(fn (EmployeeDocument $document) => [
                     'id' => $document->id,
-                    'name' => $document->employeeProfile->user->name,
+                    'name' => $document->employeeProfile->user->full_name,
                     'email' => $document->employeeProfile->user->email,
                     'tax_code' => $document->tax_code,
                     'first_page' => $document->first_page,
@@ -115,12 +115,12 @@ class PayslipBatchController extends Controller
                     'viewed_at' => $document->viewed_at?->format('d/m/Y H:i'),
                 ]),
             'profiles' => EmployeeProfile::query()
-                ->with('user:id,name')
+                ->with('user:id,first_name,last_name')
                 ->orderBy('tax_code')
                 ->get()
                 ->map(fn (EmployeeProfile $profile) => [
                     'id' => $profile->id,
-                    'name' => $profile->user->name,
+                    'name' => $profile->user->full_name,
                     'tax_code' => $profile->tax_code,
                 ]),
         ]);

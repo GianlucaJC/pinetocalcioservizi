@@ -21,20 +21,21 @@ class DatabaseSeeder extends Seeder
         Storage::disk('local')->put($demoContractPath, $this->demoContractPdf());
 
         $people = [
-            ['name' => 'Amministratore Pineto', 'email' => 'admin@pinetocalcio.test', 'role' => 'admin', 'type' => 'employee', 'tax_code' => 'PNTAMN80A01A345X', 'phone' => '+39 085 949 0001', 'pec_email' => 'amministrazione@pec.pinetocalcio.test', 'birth_date' => '1980-01-01', 'birth_place' => 'Atri', 'position' => 'Amministrazione', 'started_on' => '2022-07-01'],
-            ['name' => 'Luca Marrone', 'email' => 'luca.marrone@pinetocalcio.test', 'role' => 'employee', 'type' => 'athlete', 'tax_code' => 'MRRLCU97B02A345T', 'phone' => '+39 333 120 4501', 'pec_email' => 'luca.marrone@pec.pinetocalcio.test', 'birth_date' => '1997-02-02', 'birth_place' => 'Pescara', 'position' => 'Centrocampista', 'started_on' => '2025-07-01', 'work_contract_path' => $demoContractPath],
-            ['name' => 'Matteo Tonti', 'email' => 'matteo.tonti@pinetocalcio.test', 'role' => 'employee', 'type' => 'athlete', 'tax_code' => 'TNTMTT92C03A345E', 'phone' => '+39 333 120 4502', 'pec_email' => 'matteo.tonti@pec.pinetocalcio.test', 'birth_date' => '1992-03-03', 'birth_place' => 'Teramo', 'position' => 'Portiere', 'started_on' => '2024-07-01'],
-            ['name' => 'Giulia Rossi', 'email' => 'giulia.rossi@pinetocalcio.test', 'role' => 'employee', 'type' => 'employee', 'tax_code' => 'RSSGLI89D44A345S', 'phone' => '+39 333 120 4503', 'pec_email' => 'giulia.rossi@pec.pinetocalcio.test', 'birth_date' => '1989-04-04', 'birth_place' => 'Chieti', 'position' => 'Fisioterapista', 'started_on' => '2023-09-01'],
-            ['name' => 'Marco De Santis', 'email' => 'marco.desantis@pinetocalcio.test', 'role' => 'employee', 'type' => 'employee', 'tax_code' => 'DSNMRC85E05A345P', 'phone' => '+39 333 120 4504', 'pec_email' => 'marco.desantis@pec.pinetocalcio.test', 'birth_date' => '1985-05-05', 'birth_place' => 'Pineto', 'position' => 'Responsabile materiale', 'started_on' => '2021-08-01'],
+            ['first_name' => 'Amministratore', 'last_name' => 'Pineto', 'email' => 'admin@pinetocalcio.test', 'role' => 'admin', 'type' => 'employee', 'tax_code' => 'PNTAMN80A01A345X', 'phone' => '+39 085 949 0001', 'pec_email' => 'amministrazione@pec.pinetocalcio.test', 'birth_date' => '1980-01-01', 'birth_place' => 'Atri', 'position' => 'Amministrazione', 'started_on' => '2022-07-01'],
+            ['first_name' => 'Luca', 'last_name' => 'Marrone', 'email' => 'luca.marrone@pinetocalcio.test', 'role' => 'employee', 'type' => 'athlete', 'tax_code' => 'MRRLCU97B02A345T', 'phone' => '+39 333 120 4501', 'pec_email' => 'luca.marrone@pec.pinetocalcio.test', 'birth_date' => '1997-02-02', 'birth_place' => 'Pescara', 'position' => 'Centrocampista', 'started_on' => '2025-07-01', 'work_contract_path' => $demoContractPath],
+            ['first_name' => 'Matteo', 'last_name' => 'Tonti', 'email' => 'matteo.tonti@pinetocalcio.test', 'role' => 'employee', 'type' => 'athlete', 'tax_code' => 'TNTMTT92C03A345E', 'phone' => '+39 333 120 4502', 'pec_email' => 'matteo.tonti@pec.pinetocalcio.test', 'birth_date' => '1992-03-03', 'birth_place' => 'Teramo', 'position' => 'Portiere', 'started_on' => '2024-07-01'],
+            ['first_name' => 'Giulia', 'last_name' => 'Rossi', 'email' => 'giulia.rossi@pinetocalcio.test', 'role' => 'employee', 'type' => 'employee', 'tax_code' => 'RSSGLI89D44A345S', 'phone' => '+39 333 120 4503', 'pec_email' => 'giulia.rossi@pec.pinetocalcio.test', 'birth_date' => '1989-04-04', 'birth_place' => 'Chieti', 'position' => 'Fisioterapista', 'started_on' => '2023-09-01'],
+            ['first_name' => 'Marco', 'last_name' => 'De Santis', 'email' => 'marco.desantis@pinetocalcio.test', 'role' => 'employee', 'type' => 'employee', 'tax_code' => 'DSNMRC85E05A345P', 'phone' => '+39 333 120 4504', 'pec_email' => 'marco.desantis@pec.pinetocalcio.test', 'birth_date' => '1985-05-05', 'birth_place' => 'Pineto', 'position' => 'Responsabile materiale', 'started_on' => '2021-08-01'],
         ];
 
         foreach ($people as $person) {
-            $profile = collect($person)->except(['name', 'email', 'role'])->all();
+            $profile = collect($person)->except(['first_name', 'last_name', 'email', 'role'])->all();
 
             $user = User::updateOrCreate(
                 ['email' => $person['email']],
                 [
-                    'name' => $person['name'],
+                    'first_name' => $person['first_name'],
+                    'last_name' => $person['last_name'],
                     'role' => $person['role'],
                     'email_verified_at' => now(),
                     'password' => Hash::make('password'),

@@ -22,6 +22,10 @@ Le credenziali avviano una sessione dedicata all'admin. Da `/admin/employees` è
 
 Quando si crea un profilo di dipendente o atleta, l'email e la password di primo accesso inserite nel modulo sono le credenziali del portale. Al primo accesso l'utente deve scegliere una password personale di almeno 12 caratteri prima di poter usare le altre pagine. Se l'amministratore imposta una nuova password su un profilo esistente, il cambio è richiesto al successivo accesso.
 
+L'email delle credenziali viene inviata solo dal pulsante **Invia credenziali** nell'elenco admin, senza generare o sostituire la password salvata. La password temporanea viene conservata cifrata con `APP_KEY`, esclusa dai dati inviati al browser e cancellata quando l'utente cambia password. Proteggere `APP_KEY` e i backup. Per gli account precedenti a questa funzionalità è necessario impostare e salvare una nuova password temporanea prima dell'invio.
+
+Applicare le migrazioni con `php artisan migrate`. Configurare il mittente autorizzato dal provider tramite `MAIL_FROM_ADDRESS` e il nome tramite `MAIL_FROM_NAME` (ad esempio `Pineto Calcio - Non rispondere`). Il nome e l'avviso nella mail indicano di non rispondere, ma non bloccano le risposte: l'eventuale gestione della casella è a carico del provider. Non modificare `MAIL_USERNAME` per cambiare il solo mittente. Dopo una modifica alla configurazione eseguire `php artisan config:clear` oppure rigenerare la cache in produzione.
+
 Il modulo anagrafico admin consente inoltre di gestire PEC, dati di nascita e residenza, contatto di emergenza e note interne. È possibile allegare o sostituire il contratto di lavoro in PDF (massimo 10 MB); il file è conservato nello storage privato dell'applicazione e reso disponibile solo al dipendente o atleta associato.
 
 ## Importazione buste paga

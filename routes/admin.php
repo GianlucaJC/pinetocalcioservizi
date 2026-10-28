@@ -13,6 +13,7 @@ Route::middleware('admin.guest')->group(function () {
 Route::middleware('admin')->group(function () {
     Route::get('/', fn () => redirect()->route('admin.employees.index'))->name('dashboard');
     Route::get('employees/{employee}/contract', [EmployeeController::class, 'contract'])->name('employees.contract');
+    Route::post('employees/{employee}/send-credentials', [EmployeeController::class, 'sendCredentials'])->name('employees.send-credentials');
     Route::resource('employees', EmployeeController::class)->except('show');
     Route::get('payslips', [PayslipBatchController::class, 'index'])->name('payslips.index');
     Route::get('payslips/upload', [PayslipBatchController::class, 'create'])->name('payslips.create');

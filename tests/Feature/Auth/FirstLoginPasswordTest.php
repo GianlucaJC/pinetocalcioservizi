@@ -15,6 +15,7 @@ class FirstLoginPasswordTest extends TestCase
     {
         $user = User::factory()->create([
             'password' => 'TemporaryPassword123!',
+            'temporary_password' => 'TemporaryPassword123!',
             'must_change_password' => true,
         ]);
 
@@ -37,6 +38,7 @@ class FirstLoginPasswordTest extends TestCase
 
         $user->refresh();
         $this->assertFalse($user->must_change_password);
+        $this->assertNull($user->temporary_password);
         $this->assertTrue(Hash::check('PersonalPassword456!', $user->password));
         $this->assertFalse(Hash::check('TemporaryPassword123!', $user->password));
         $this->get(route('profile.edit'))->assertOk();
