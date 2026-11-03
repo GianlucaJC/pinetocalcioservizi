@@ -1,6 +1,7 @@
 <script setup>
 import AdminLayout from '@/Layouts/AdminLayout.vue';
 import { Head, Link, router, useForm } from '@inertiajs/vue3';
+import { ref } from 'vue';
 
 const props = defineProps({
     batch: Object,
@@ -10,6 +11,7 @@ const props = defineProps({
 
 const assignments = Object.fromEntries(props.batch.segments.map((segment, index) => [index, segment.employee_profile_id]));
 const form = useForm({ assignments });
+const assignmentsVisible = ref(props.batch.status === 'review');
 
 const saveAssignments = () => form.patch(route('admin.payslips.update', props.batch.id));
 
@@ -25,10 +27,10 @@ const publish = () => {
     <AdminLayout>
         <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div>
-                <h1 class="text-2xl font-bold text-slate-950">Revisione del lotto</h1>
+                <h1 class="text-2xl font-bold text-slate-950">{{ batch.status === 'completed' ? 'Dettaglio buste' : 'Revisione buste' }}</h1>
                 <p class="mt-1 text-sm text-slate-600">{{ batch.original_filename }} · {{ batch.period_month }}/{{ batch.period_year }}</p>
             </div>
-            <Link :href="route('admin.payslips.index')" class="text-sm font-semibold text-pineto-700 hover:text-pineto-900">Torna ai lotti</Link>
+            <Link :href="route('admin.payslips.index')" class="text-sm font-semibold text-pineto-700 hover:text-pineto-900">Torna alle buste</Link>
         </div>
 
         <div class="mt-6 grid gap-4 sm:grid-cols-2">
@@ -36,29 +38,6 @@ const publish = () => {
             <div class="rounded-xl bg-amber-50 p-5 ring-1 ring-amber-200"><p class="text-sm font-semibold text-amber-800">Da verificare</p><p class="mt-1 text-3xl font-bold text-amber-900">{{ batch.unmatched_count }}</p></div>
         </div>
 
-        <section class="mt-6 overflow-hidden rounded-xl bg-white shadow-sm ring-1 ring-slate-200">
-            <div class="divide-y divide-slate-100">
-                <article v-for="(segment, index) in batch.segments" :key="`${segment.first_page}-${segment.last_page}`" class="flex flex-col gap-3 p-5 sm:flex-row sm:items-center sm:justify-between">
-                    <div>
-                        <p class="font-mono text-sm font-bold text-slate-900">{{ segment.tax_code || 'Codice fiscale non identificato' }}</p>
-                        <p class="mt-1 text-sm text-slate-600">Pagine {{ segment.first_page }}{{ segment.last_page !== segment.first_page ? `-${segment.last_page}` : '' }}</p>
-                    </div>
-                    <p v-if="segment.employee_profile_id" class="rounded-full bg-emerald-50 px-3 py-1 text-xs font-bold text-emerald-700">Assegnata</p>
-                    <div v-else class="w-full sm:max-w-sm">
-                        <p class="mb-2 text-sm font-medium text-amber-700">{{ segment.issue }}</p>
-                        <select v-model="form.assignments[index]" class="block w-full rounded-lg border-slate-300 text-sm shadow-sm focus:border-pineto-500 focus:ring-pineto-500">
-                            <option :value="null">Non assegnare</option>
-                            <option v-for="profile in profiles" :key="profile.id" :value="profile.id">{{ profile.name }} · {{ profile.tax_code }}</option>
-                        </select>
-                    </div>
-                </article>
-            </div>
-        </section>
-
-        <div v-if="batch.status === 'review'" class="mt-6 flex flex-wrap justify-end gap-3">
-            <button type="button" :disabled="form.processing" class="rounded-lg border border-slate-300 px-4 py-2 text-sm font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-50" @click="saveAssignments">Salva assegnazioni</button>
-            <button type="button" :disabled="batch.assignable_count === 0" class="rounded-lg bg-pineto-600 px-4 py-2 text-sm font-bold text-white hover:bg-pineto-700 disabled:cursor-not-allowed disabled:opacity-50" @click="publish">Pubblica buste riconosciute</button>
-        </div>
         <section v-if="batch.status === 'completed'" class="mt-6 overflow-hidden rounded-xl bg-white shadow-sm ring-1 ring-slate-200">
             <div class="border-b border-slate-100 px-5 py-4">
                 <h2 class="font-bold text-slate-900">Invii ai dipendenti e atleti</h2>
@@ -82,5 +61,36 @@ const publish = () => {
         <nav v-if="batch.status === 'completed' && deliveries.links.length > 3" class="mt-6 flex flex-wrap gap-1">
             <Link v-for="link in deliveries.links" :key="link.label" :href="link.url || '#'" :class="['rounded px-3 py-2 text-sm', link.active ? 'bg-pineto-600 font-bold text-white' : 'bg-white text-slate-600 ring-1 ring-slate-200', !link.url && 'pointer-events-none opacity-50']" v-html="link.label" />
         </nav>
+
+        <section class="mt-6 overflow-hidden rounded-xl bg-white shadow-sm ring-1 ring-slate-200">
+            <button v-if="batch.status === 'completed'" type="button" class="flex w-full items-center justify-between px-5 py-4 text-left hover:bg-slate-50" @click="assignmentsVisible = !assignmentsVisible">
+                <span>
+                    <span class="block font-bold text-slate-900">Assegnazioni delle buste</span>
+                    <span class="mt-1 block text-sm text-slate-600">Codici fiscali e pagine associate durante l’elaborazione.</span>
+                </span>
+                <span class="text-sm font-semibold text-pineto-700">{{ assignmentsVisible ? 'Nascondi' : 'Mostra' }}</span>
+            </button>
+            <div v-if="assignmentsVisible" class="divide-y divide-slate-100" :class="{ 'border-t border-slate-100': batch.status === 'completed' }">
+                <article v-for="(segment, index) in batch.segments" :key="`${segment.first_page}-${segment.last_page}`" class="flex flex-col gap-3 p-5 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                        <p class="font-mono text-sm font-bold text-slate-900">{{ segment.tax_code || 'Codice fiscale non identificato' }}</p>
+                        <p class="mt-1 text-sm text-slate-600">Pagine {{ segment.first_page }}{{ segment.last_page !== segment.first_page ? `-${segment.last_page}` : '' }}</p>
+                    </div>
+                    <p v-if="segment.employee_profile_id" class="rounded-full bg-emerald-50 px-3 py-1 text-xs font-bold text-emerald-700">Assegnata</p>
+                    <div v-else class="w-full sm:max-w-sm">
+                        <p class="mb-2 text-sm font-medium text-amber-700">{{ segment.issue }}</p>
+                        <select v-model="form.assignments[index]" class="block w-full rounded-lg border-slate-300 text-sm shadow-sm focus:border-pineto-500 focus:ring-pineto-500">
+                            <option :value="null">Non assegnare</option>
+                            <option v-for="profile in profiles" :key="profile.id" :value="profile.id">{{ profile.name }} · {{ profile.tax_code }}</option>
+                        </select>
+                    </div>
+                </article>
+            </div>
+        </section>
+
+        <div v-if="batch.status === 'review'" class="mt-6 flex flex-wrap justify-end gap-3">
+            <button type="button" :disabled="form.processing" class="rounded-lg border border-slate-300 px-4 py-2 text-sm font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-50" @click="saveAssignments">Salva assegnazioni</button>
+            <button type="button" :disabled="batch.assignable_count === 0" class="rounded-lg bg-pineto-600 px-4 py-2 text-sm font-bold text-white hover:bg-pineto-700 disabled:cursor-not-allowed disabled:opacity-50" @click="publish">Pubblica buste riconosciute</button>
+        </div>
     </AdminLayout>
 </template>

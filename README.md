@@ -30,7 +30,16 @@ Il modulo anagrafico admin consente inoltre di gestire PEC, dati di nascita e re
 
 ## Importazione buste paga
 
-Dall’area admin, la voce **Buste paga** permette di caricare un singolo PDF testuale fino a 50 MB per il mese e l’anno selezionati. Il sistema legge il codice fiscale presente in ogni pagina, raggruppa le pagine consecutive con lo stesso codice e propone una revisione prima della pubblicazione.
+Dall’area admin, la voce **Buste paga** permette di caricare un singolo PDF testuale fino a 50 MB per il mese e l’anno selezionati. Il sistema usa Poppler (`pdftotext`) per leggere il codice fiscale presente in ogni pagina, raggruppa le pagine consecutive con lo stesso codice e propone una revisione prima della pubblicazione.
+
+Installare Poppler sul server e rendere `pdftotext` disponibile nel `PATH`. Se il binario non è nel `PATH`, impostare il percorso assoluto:
+
+```env
+PDFTOTEXT_BINARY="C:/Program Files/poppler/Library/bin/pdftotext.exe"
+PDFTOTEXT_TIMEOUT=30
+```
+
+In produzione, dopo aver modificato queste variabili, eseguire `php artisan config:clear` oppure rigenerare la cache della configurazione.
 
 Le sequenze riconosciute vengono associate automaticamente al relativo profilo. Le sequenze con un codice assente o non riconosciuto restano da verificare: l’admin può assegnarle manualmente a un dipendente o atleta, oppure lasciarle fuori dalla pubblicazione. Dopo la conferma, ogni utente vede esclusivamente la propria busta paga nell’area documenti.
 

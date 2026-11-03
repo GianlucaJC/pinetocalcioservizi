@@ -39,7 +39,7 @@ watch(filters, () => {
         <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div>
                 <h1 class="text-2xl font-bold text-slate-950">Consultazione invii</h1>
-                <p class="mt-1 text-sm text-slate-600">Consulta i lotti elaborati, le buste pubblicate e il relativo stato di visualizzazione.</p>
+                <p class="mt-1 text-sm text-slate-600">Consulta le buste elaborate, le pubblicazioni e il relativo stato di visualizzazione.</p>
             </div>
             <Link :href="route('admin.payslips.create')" class="inline-flex items-center justify-center rounded-lg bg-pineto-600 px-4 py-2.5 text-sm font-bold text-white shadow-sm hover:bg-pineto-700">Nuova analisi PDF</Link>
         </div>
@@ -59,8 +59,8 @@ watch(filters, () => {
         </section>
 
         <section class="mt-8 overflow-hidden rounded-xl bg-white shadow-sm ring-1 ring-slate-200">
-            <div class="border-b border-slate-100 px-5 py-4"><h2 class="font-bold text-slate-900">Lotti importati</h2></div>
-            <div v-if="batches.data.length === 0" class="p-6 text-sm text-slate-500">Non è stato ancora importato alcun lotto.</div>
+            <div class="border-b border-slate-100 px-5 py-4"><h2 class="font-bold text-slate-900">Buste importate</h2></div>
+            <div v-if="batches.data.length === 0" class="p-6 text-sm text-slate-500">Non è stata ancora importata alcuna busta.</div>
             <div v-else class="divide-y divide-slate-100">
                 <Link v-for="batch in batches.data" :key="batch.id" :href="route('admin.payslips.show', batch.id)" class="flex items-center justify-between gap-4 p-5 hover:bg-slate-50">
                     <div>

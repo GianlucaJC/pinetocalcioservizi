@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Admin;
 
+use App\Exceptions\PayslipTextExtractionException;
 use App\Http\Controllers\Controller;
 use App\Models\DocumentBatch;
 use App\Models\EmployeeDocument;
@@ -14,15 +15,16 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class PayslipBatchController extends Controller
 {
-    private const BATCHES_PER_PAGE = 2;
+    private const BATCHES_PER_PAGE = 10;
 
-    private const DELIVERIES_PER_PAGE = 2;
+    private const DELIVERIES_PER_PAGE = 10;
 
     public function index(Request $request): Response
     {
@@ -62,7 +64,12 @@ class PayslipBatchController extends Controller
 
         /** @var UploadedFile $file */
         $file = $data['file'];
-        $segments = $payslipPdfService->analyze($file->getRealPath());
+        try {
+            $segments = $payslipPdfService->analyze($file->getRealPath());
+        } catch (PayslipTextExtractionException $exception) {
+            throw ValidationException::withMessages(['file' => $exception->getMessage()]);
+        }
+
         $profiles = EmployeeProfile::query()
             ->whereIn('tax_code', array_filter(array_column($segments, 'tax_code')))
             ->get()

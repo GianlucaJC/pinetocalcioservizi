@@ -7,6 +7,7 @@ use App\Models\EmployeeDocument;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Facades\Storage;
 use TCPDF;
 use Tests\TestCase;
@@ -24,6 +25,9 @@ class PayslipBatchManagementTest extends TestCase
             'admin.password' => 'CorrectAdminPassword123!',
         ]);
         Storage::fake('local');
+        Process::fake([
+            '*' => Process::result("Codice fiscale RSSMRA90A01A000A\fCodice fiscale VRDLGI88A01A000B\f"),
+        ]);
     }
 
     public function test_admin_can_review_and_publish_recognized_payslips_from_a_pdf_batch(): void
@@ -150,7 +154,7 @@ class PayslipBatchManagementTest extends TestCase
 
         $this->get(route('admin.payslips.index'))
             ->assertOk()
-            ->assertInertia(fn ($page) => $page->has('batches.data', 2));
+            ->assertInertia(fn ($page) => $page->has('batches.data', 10));
 
         $this->get(route('admin.payslips.index', [
             'period_year' => 2000,
@@ -164,7 +168,7 @@ class PayslipBatchManagementTest extends TestCase
 
         $this->get(route('admin.payslips.show', $batch))
             ->assertOk()
-            ->assertInertia(fn ($page) => $page->has('deliveries.data', 2));
+            ->assertInertia(fn ($page) => $page->has('deliveries.data', 10));
     }
 
     private function payslipPdf(): string

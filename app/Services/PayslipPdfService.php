@@ -2,20 +2,22 @@
 
 namespace App\Services;
 
-use Illuminate\Support\Facades\Storage;
+use App\Exceptions\PayslipTextExtractionException;
+use Illuminate\Support\Facades\Process;
 use setasign\Fpdi\Tcpdf\Fpdi;
-use Smalot\PdfParser\Parser;
+use Illuminate\Support\Facades\Storage;
 
 class PayslipPdfService
 {
     public function analyze(string $sourcePath): array
     {
-        $pdf = (new Parser())->parseFile($sourcePath);
+        $pages = explode("\f", rtrim($this->extractText($sourcePath), "\f \t\r\n"));
+
         $segments = [];
         $currentSegment = null;
 
-        foreach ($pdf->getPages() as $index => $page) {
-            $taxCodes = $this->taxCodesFromText($page->getText());
+        foreach ($pages as $index => $text) {
+            $taxCodes = $this->taxCodesFromText($text);
             $taxCode = count($taxCodes) === 1 ? $taxCodes[0] : null;
 
             if ($currentSegment !== null && $currentSegment['tax_code'] === $taxCode) {
@@ -40,6 +42,27 @@ class PayslipPdfService
         }
 
         return $segments;
+    }
+
+    private function extractText(string $sourcePath): string
+    {
+        $result = Process::timeout(config('payslips.pdftotext.timeout'))
+            ->run([
+                config('payslips.pdftotext.binary'),
+                '-layout',
+                '-enc',
+                'UTF-8',
+                $sourcePath,
+                '-',
+            ]);
+
+        if ($result->successful()) {
+            return $result->output();
+        }
+
+        throw new PayslipTextExtractionException(
+            'Impossibile leggere il testo del PDF. Verifica che Poppler pdftotext sia installato e configurato correttamente.',
+        );
     }
 
     public function split(string $sourcePath, array $pages, string $destinationPath): void
