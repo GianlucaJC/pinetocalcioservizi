@@ -3,7 +3,7 @@ import GuestLayout from '@/Layouts/GuestLayout.vue';
 import InputError from '@/Components/InputError.vue';
 import PrimaryButton from '@/Components/PrimaryButton.vue';
 import TextInput from '@/Components/TextInput.vue';
-import { Head, useForm } from '@inertiajs/vue3';
+import { Head, router, useForm } from '@inertiajs/vue3';
 
 const form = useForm({
     password: '',
@@ -13,6 +13,8 @@ const form = useForm({
 const submit = () => form.put(route('password.first-login.update'), {
     onFinish: () => form.reset(),
 });
+
+const logout = () => router.post(route('logout'));
 </script>
 
 <template>
@@ -34,6 +36,7 @@ const submit = () => form.put(route('password.first-login.update'), {
                 <InputError class="mt-2" :message="form.errors.password_confirmation" />
             </div>
             <PrimaryButton class="w-full justify-center rounded-xl bg-pineto-600 py-3 text-sm font-bold hover:bg-pineto-700" :disabled="form.processing">Salva e continua</PrimaryButton>
+            <button type="button" class="w-full text-center text-sm font-semibold text-pineto-700 hover:text-pineto-900" @click="logout">Esci e accedi con un altro account</button>
         </form>
     </GuestLayout>
 </template>

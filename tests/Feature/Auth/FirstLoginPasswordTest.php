@@ -59,4 +59,19 @@ class FirstLoginPasswordTest extends TestCase
 
         $this->assertTrue($user->fresh()->must_change_password);
     }
+
+    public function test_user_can_log_out_before_changing_the_temporary_password(): void
+    {
+        $user = User::factory()->create([
+            'password' => 'TemporaryPassword123!',
+            'must_change_password' => true,
+        ]);
+
+        $this->actingAs($user)
+            ->post(route('logout'))
+            ->assertRedirect('/');
+
+        $this->assertGuest();
+        $this->get(route('login'))->assertOk();
+    }
 }

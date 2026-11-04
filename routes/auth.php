@@ -35,6 +35,8 @@ Route::middleware('auth')->group(function () {
         ->name('password.first-login');
     Route::put('first-login-password', [FirstLoginPasswordController::class, 'update'])
         ->name('password.first-login.update');
+    Route::post('logout', [AuthenticatedSessionController::class, 'destroy'])
+        ->name('logout');
 });
 
 Route::middleware(['auth', 'password.changed'])->group(function () {
@@ -56,6 +58,4 @@ Route::middleware(['auth', 'password.changed'])->group(function () {
 
     Route::put('password', [PasswordController::class, 'update'])->name('password.update');
 
-    Route::post('logout', [AuthenticatedSessionController::class, 'destroy'])
-                ->name('logout');
 });

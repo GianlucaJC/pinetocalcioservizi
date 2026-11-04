@@ -15,7 +15,6 @@ class EnsurePasswordIsChanged
             && ! in_array($request->route()?->getName(), [
                 'password.first-login',
                 'password.first-login.update',
-                'logout',
             ], true)
         ) {
             return redirect()->route('password.first-login');
