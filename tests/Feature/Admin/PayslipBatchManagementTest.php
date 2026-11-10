@@ -171,6 +171,167 @@ class PayslipBatchManagementTest extends TestCase
             ->assertInertia(fn ($page) => $page->has('deliveries.data', 10));
     }
 
+    public function test_admin_can_delete_an_unviewed_payslip_batch_and_its_files(): void
+    {
+        $employee = User::factory()->create(['role' => 'employee']);
+        $profile = $employee->employeeProfile()->create([
+            'type' => 'employee',
+            'tax_code' => 'RSSMRA90A01A000A',
+            'phone' => '3331234567',
+        ]);
+        $batch = DocumentBatch::create([
+            'original_filename' => 'buste-ottobre.pdf',
+            'storage_path' => 'payslips/batches/buste-ottobre.pdf',
+            'document_type' => 'payslip',
+            'period_year' => 2026,
+            'period_month' => 10,
+            'status' => 'completed',
+        ]);
+        $document = EmployeeDocument::create([
+            'employee_profile_id' => $profile->id,
+            'document_batch_id' => $batch->id,
+            'document_type' => 'payslip',
+            'title' => 'Busta paga - 10/2026',
+            'tax_code' => $profile->tax_code,
+            'period_year' => 2026,
+            'period_month' => 10,
+            'storage_path' => 'documents/'.$profile->id.'/busta-ottobre.pdf',
+            'original_filename' => 'busta-ottobre.pdf',
+            'first_page' => 1,
+            'last_page' => 1,
+        ]);
+        Storage::disk('local')->put($batch->storage_path, 'source');
+        Storage::disk('local')->put($document->storage_path, 'document');
+
+        $this->post(route('admin.login.store'), [
+            'email' => 'admin@pinetocalcio.test',
+            'password' => 'CorrectAdminPassword123!',
+        ]);
+
+        $this->delete(route('admin.payslips.destroy', $batch))
+            ->assertRedirect(route('admin.payslips.index'));
+
+        $this->assertDatabaseMissing('document_batches', ['id' => $batch->id]);
+        $this->assertDatabaseMissing('employee_documents', ['id' => $document->id]);
+        Storage::disk('local')->assertMissing($batch->storage_path);
+        Storage::disk('local')->assertMissing($document->storage_path);
+    }
+
+    public function test_admin_cannot_delete_a_payslip_batch_after_a_document_is_viewed(): void
+    {
+        $employee = User::factory()->create(['role' => 'employee']);
+        $profile = $employee->employeeProfile()->create([
+            'type' => 'employee',
+            'tax_code' => 'RSSMRA90A01A000A',
+            'phone' => '3331234567',
+        ]);
+        $batch = DocumentBatch::create([
+            'original_filename' => 'buste-ottobre.pdf',
+            'storage_path' => 'payslips/batches/buste-ottobre.pdf',
+            'document_type' => 'payslip',
+            'period_year' => 2026,
+            'period_month' => 10,
+            'status' => 'completed',
+        ]);
+        $document = EmployeeDocument::create([
+            'employee_profile_id' => $profile->id,
+            'document_batch_id' => $batch->id,
+            'document_type' => 'payslip',
+            'title' => 'Busta paga - 10/2026',
+            'tax_code' => $profile->tax_code,
+            'period_year' => 2026,
+            'period_month' => 10,
+            'storage_path' => 'documents/'.$profile->id.'/busta-ottobre.pdf',
+            'original_filename' => 'busta-ottobre.pdf',
+            'first_page' => 1,
+            'last_page' => 1,
+            'viewed_at' => now(),
+        ]);
+
+        $this->post(route('admin.login.store'), [
+            'email' => 'admin@pinetocalcio.test',
+            'password' => 'CorrectAdminPassword123!',
+        ]);
+
+        $this->delete(route('admin.payslips.destroy', $batch))
+            ->assertStatus(409);
+
+        $this->assertDatabaseHas('document_batches', ['id' => $batch->id]);
+        $this->assertDatabaseHas('employee_documents', ['id' => $document->id]);
+    }
+
+    public function test_publishing_a_correction_hides_the_previous_payslip_from_the_employee(): void
+    {
+        $employee = User::factory()->create(['role' => 'employee']);
+        $profile = $employee->employeeProfile()->create([
+            'type' => 'employee',
+            'tax_code' => 'RSSMRA90A01A000A',
+            'phone' => '3331234567',
+        ]);
+        $originalBatch = DocumentBatch::create([
+            'original_filename' => 'buste-ottobre-originale.pdf',
+            'storage_path' => 'payslips/batches/buste-ottobre-originale.pdf',
+            'document_type' => 'payslip',
+            'period_year' => 2026,
+            'period_month' => 10,
+            'status' => 'completed',
+        ]);
+        $originalDocument = EmployeeDocument::create([
+            'employee_profile_id' => $profile->id,
+            'document_batch_id' => $originalBatch->id,
+            'document_type' => 'payslip',
+            'title' => 'Busta paga - 10/2026',
+            'tax_code' => $profile->tax_code,
+            'period_year' => 2026,
+            'period_month' => 10,
+            'storage_path' => 'documents/'.$profile->id.'/busta-ottobre-originale.pdf',
+            'original_filename' => 'busta-ottobre-originale.pdf',
+            'first_page' => 1,
+            'last_page' => 1,
+        ]);
+        $correctionBatch = DocumentBatch::create([
+            'original_filename' => 'buste-ottobre-rettifica.pdf',
+            'storage_path' => 'payslips/batches/buste-ottobre-rettifica.pdf',
+            'document_type' => 'payslip',
+            'period_year' => 2026,
+            'period_month' => 10,
+            'status' => 'review',
+            'metadata' => ['segments' => [[
+                'tax_code' => $profile->tax_code,
+                'employee_profile_id' => $profile->id,
+                'first_page' => 1,
+                'last_page' => 1,
+                'issue' => null,
+            ]]],
+        ]);
+        Storage::disk('local')->put($correctionBatch->storage_path, $this->payslipPdf());
+
+        $this->post(route('admin.login.store'), [
+            'email' => 'admin@pinetocalcio.test',
+            'password' => 'CorrectAdminPassword123!',
+        ]);
+
+        $this->post(route('admin.payslips.publish', $correctionBatch))
+            ->assertRedirect(route('admin.payslips.index'));
+
+        $replacement = EmployeeDocument::query()
+            ->where('document_batch_id', $correctionBatch->id)
+            ->sole();
+
+        $this->assertSame(1, $correctionBatch->fresh()->revision_number);
+        $this->assertFalse($originalDocument->fresh()->is_visible_to_employee);
+        $this->assertSame($replacement->id, $originalDocument->fresh()->replaced_by_document_id);
+        $this->assertTrue($replacement->is_visible_to_employee);
+        $this->assertStringContainsString('Rettifica n. 1', $replacement->title);
+
+        $this->actingAs($employee)
+            ->get(route('documents.index'))
+            ->assertInertia(fn ($page) => $page->has('documents.data', 1));
+        $this->actingAs($employee)
+            ->get(route('documents.show', $originalDocument))
+            ->assertNotFound();
+    }
+
     private function payslipPdf(): string
     {
         $pdf = new TCPDF();

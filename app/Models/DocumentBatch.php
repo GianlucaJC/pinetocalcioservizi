@@ -20,6 +20,7 @@ class DocumentBatch extends Model
         'period_month',
         'status',
         'documents_count',
+        'revision_number',
         'metadata',
     ];
 

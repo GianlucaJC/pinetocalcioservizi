@@ -108,7 +108,10 @@ class PayslipBatchController extends Controller
         return Inertia::render('Admin/Payslips/Review', [
             'batch' => $this->batchData($batch),
             'deliveries' => $batch->documents()
-                ->with('employeeProfile.user:id,first_name,last_name,email')
+                ->with([
+                    'employeeProfile.user:id,first_name,last_name,email',
+                    'replacedByDocument.batch:id,revision_number',
+                ])
                 ->orderBy('tax_code')
                 ->paginate(self::DELIVERIES_PER_PAGE)
                 ->withQueryString()
@@ -120,6 +123,8 @@ class PayslipBatchController extends Controller
                     'first_page' => $document->first_page,
                     'last_page' => $document->last_page,
                     'viewed_at' => $document->viewed_at?->format('d/m/Y H:i'),
+                    'is_visible_to_employee' => $document->is_visible_to_employee,
+                    'replaced_by_revision_number' => $document->replacedByDocument?->batch?->revision_number,
                 ]),
             'profiles' => EmployeeProfile::query()
                 ->with('user:id,first_name,last_name')
@@ -165,6 +170,21 @@ class PayslipBatchController extends Controller
         $published = 0;
 
         DB::transaction(function () use ($batch, $segments, $payslipPdfService, &$published) {
+            $hasPublishedPayslips = EmployeeDocument::query()
+                ->where('document_type', 'payslip')
+                ->where('period_year', $batch->period_year)
+                ->where('period_month', $batch->period_month)
+                ->where('is_visible_to_employee', true)
+                ->exists();
+            $revisionNumber = $hasPublishedPayslips
+                ? DocumentBatch::query()
+                    ->where('document_type', 'payslip')
+                    ->where('period_year', $batch->period_year)
+                    ->where('period_month', $batch->period_month)
+                    ->where('status', 'completed')
+                    ->max('revision_number') + 1
+                : 0;
+
             foreach ($segments as $segment) {
                 if (! $segment['employee_profile_id']) {
                     continue;
@@ -178,11 +198,12 @@ class PayslipBatchController extends Controller
                     $documentPath,
                 );
 
-                EmployeeDocument::create([
+                $document = EmployeeDocument::create([
                     'employee_profile_id' => $segment['employee_profile_id'],
                     'document_batch_id' => $batch->id,
                     'document_type' => 'payslip',
-                    'title' => 'Busta paga - '.$batch->period_month.'/'.$batch->period_year,
+                    'title' => 'Busta paga - '.$batch->period_month.'/'.$batch->period_year
+                        .($revisionNumber > 0 ? ' - Rettifica n. '.$revisionNumber : ''),
                     'tax_code' => $profile->tax_code,
                     'period_year' => $batch->period_year,
                     'period_month' => $batch->period_month,
@@ -191,16 +212,56 @@ class PayslipBatchController extends Controller
                     'first_page' => $segment['first_page'],
                     'last_page' => $segment['last_page'],
                 ]);
+
+                EmployeeDocument::query()
+                    ->where('employee_profile_id', $segment['employee_profile_id'])
+                    ->where('document_type', 'payslip')
+                    ->where('period_year', $batch->period_year)
+                    ->where('period_month', $batch->period_month)
+                    ->where('is_visible_to_employee', true)
+                    ->where('document_batch_id', '!=', $batch->id)
+                    ->whereKeyNot($document->id)
+                    ->update([
+                        'is_visible_to_employee' => false,
+                        'replaced_by_document_id' => $document->id,
+                    ]);
                 $published++;
             }
 
             $batch->update([
                 'status' => 'completed',
                 'documents_count' => $published,
+                'revision_number' => $revisionNumber,
             ]);
         });
 
         return redirect()->route('admin.payslips.index')->with('success', $published.' buste paga pubblicate. Gli elementi non riconosciuti restano nel lotto per revisione.');
+    }
+
+    public function destroy(DocumentBatch $batch): RedirectResponse
+    {
+        $this->ensurePayslipBatch($batch);
+
+        DB::transaction(function () use ($batch) {
+            $batch = DocumentBatch::query()->lockForUpdate()->findOrFail($batch->id);
+            $documents = $batch->documents()->lockForUpdate()->get();
+
+            abort_if(
+                $documents->contains(fn (EmployeeDocument $document) => $document->viewed_at !== null),
+                409,
+                'Non puoi eliminare una busta già visualizzata da un dipendente o atleta.',
+            );
+
+            Storage::disk('local')->delete([
+                $batch->storage_path,
+                ...$documents->pluck('storage_path')->all(),
+            ]);
+
+            $documents->each->delete();
+            $batch->delete();
+        });
+
+        return redirect()->route('admin.payslips.index')->with('success', 'Busta eliminata.');
     }
 
     public function document(EmployeeDocument $document): StreamedResponse
@@ -225,9 +286,11 @@ class PayslipBatchController extends Controller
             'period_month' => $batch->period_month,
             'status' => $batch->status,
             'documents_count' => $batch->documents_count,
+            'revision_number' => $batch->revision_number,
             'segments' => $segments,
             'assignable_count' => count(array_filter($segments, fn (array $segment) => $segment['employee_profile_id'])),
             'unmatched_count' => count(array_filter($segments, fn (array $segment) => ! $segment['employee_profile_id'])),
+            'can_delete' => ! $batch->documents()->whereNotNull('viewed_at')->exists(),
         ];
     }
 

@@ -24,6 +24,7 @@ class EmployeeDocumentController extends Controller
         abort_unless($profile, 404);
 
         $documents = $profile->documents()
+            ->where('is_visible_to_employee', true)
             ->when($filters['type'] ?? null, fn ($query, $type) => $query->where('document_type', $type))
             ->when($filters['year'] ?? null, fn ($query, $year) => $query->where('period_year', $year))
             ->when($filters['search'] ?? null, fn ($query, $search) => $query->where('title', 'like', '%'.$search.'%'))
@@ -49,6 +50,7 @@ class EmployeeDocumentController extends Controller
                 'search' => $filters['search'] ?? '',
             ],
             'years' => $profile->documents()
+                    ->where('is_visible_to_employee', true)
                 ->whereNotNull('period_year')
                 ->distinct()
                 ->orderByDesc('period_year')
@@ -60,6 +62,7 @@ class EmployeeDocumentController extends Controller
     public function show(Request $request, EmployeeDocument $document): StreamedResponse
     {
         abort_unless($document->employee_profile_id === $request->user()->employeeProfile?->id, 404);
+        abort_unless($document->is_visible_to_employee, 404);
         abort_unless(Storage::disk('local')->exists($document->storage_path), 404);
 
         if ($document->viewed_at === null) {

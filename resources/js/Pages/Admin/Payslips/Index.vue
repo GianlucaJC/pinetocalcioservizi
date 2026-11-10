@@ -14,6 +14,7 @@ const months = [
 ];
 
 const statusLabel = (status) => status === 'completed' ? 'Pubblicato' : 'Da revisionare';
+const revisionLabel = (batch) => batch.revision_number > 0 ? `Rettifica n. ${batch.revision_number}` : 'Versione originale';
 
 const filters = reactive({
     period_year: props.filters.period_year,
@@ -65,7 +66,7 @@ watch(filters, () => {
                 <Link v-for="batch in batches.data" :key="batch.id" :href="route('admin.payslips.show', batch.id)" class="flex items-center justify-between gap-4 p-5 hover:bg-slate-50">
                     <div>
                         <p class="font-semibold text-slate-900">{{ batch.original_filename }}</p>
-                        <p class="mt-1 text-sm text-slate-600">{{ months[batch.period_month - 1] }} {{ batch.period_year }} · {{ batch.assignable_count }} assegnabili · {{ batch.unmatched_count }} da verificare</p>
+                        <p class="mt-1 text-sm text-slate-600">{{ months[batch.period_month - 1] }} {{ batch.period_year }} · {{ revisionLabel(batch) }} · {{ batch.assignable_count }} assegnabili · {{ batch.unmatched_count }} da verificare</p>
                     </div>
                     <span class="rounded-full px-2.5 py-1 text-xs font-bold" :class="batch.status === 'completed' ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'">{{ statusLabel(batch.status) }}</span>
                 </Link>

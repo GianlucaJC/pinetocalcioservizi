@@ -25,12 +25,15 @@ class EmployeeDocument extends Model
         'last_page',
         'metadata',
         'viewed_at',
+        'is_visible_to_employee',
+        'replaced_by_document_id',
     ];
 
     protected $casts = [
         'issued_on' => 'date:Y-m-d',
         'metadata' => 'array',
         'viewed_at' => 'datetime',
+        'is_visible_to_employee' => 'boolean',
     ];
 
     public function employeeProfile(): BelongsTo
@@ -41,5 +44,10 @@ class EmployeeDocument extends Model
     public function batch(): BelongsTo
     {
         return $this->belongsTo(DocumentBatch::class, 'document_batch_id');
+    }
+
+    public function replacedByDocument(): BelongsTo
+    {
+        return $this->belongsTo(self::class, 'replaced_by_document_id');
     }
 }

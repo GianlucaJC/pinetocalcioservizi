@@ -20,6 +20,12 @@ const publish = () => {
         router.post(route('admin.payslips.publish', props.batch.id));
     }
 };
+
+const destroy = () => {
+    if (confirm('Eliminare questa busta e tutte le buste pubblicate? L’operazione non può essere annullata.')) {
+        router.delete(route('admin.payslips.destroy', props.batch.id));
+    }
+};
 </script>
 
 <template>
@@ -30,7 +36,10 @@ const publish = () => {
                 <h1 class="text-2xl font-bold text-slate-950">{{ batch.status === 'completed' ? 'Dettaglio buste' : 'Revisione buste' }}</h1>
                 <p class="mt-1 text-sm text-slate-600">{{ batch.original_filename }} · {{ batch.period_month }}/{{ batch.period_year }}</p>
             </div>
-            <Link :href="route('admin.payslips.index')" class="text-sm font-semibold text-pineto-700 hover:text-pineto-900">Torna alle buste</Link>
+            <div class="flex items-center gap-4">
+                <button v-if="batch.can_delete" type="button" class="text-sm font-semibold text-red-700 hover:text-red-900" @click="destroy">Elimina busta</button>
+                <Link :href="route('admin.payslips.index')" class="text-sm font-semibold text-pineto-700 hover:text-pineto-900">Torna alle buste</Link>
+            </div>
         </div>
 
         <div class="mt-6 grid gap-4 sm:grid-cols-2">
@@ -52,6 +61,7 @@ const publish = () => {
                         <p class="mt-1 text-xs text-slate-500">Pagine {{ delivery.first_page }}{{ delivery.last_page !== delivery.first_page ? `-${delivery.last_page}` : '' }}</p>
                     </div>
                     <div class="flex flex-wrap items-center gap-3">
+                        <span v-if="!delivery.is_visible_to_employee" class="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold text-slate-700">Sostituita dalla rettifica n. {{ delivery.replaced_by_revision_number }}</span>
                         <span class="rounded-full px-3 py-1 text-xs font-bold" :class="delivery.viewed_at ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'">{{ delivery.viewed_at ? `Visionata il ${delivery.viewed_at}` : 'Non ancora visionata' }}</span>
                         <a :href="route('admin.payslips.documents.show', delivery.id)" target="_blank" rel="noopener" class="rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">Apri busta</a>
                     </div>
@@ -61,6 +71,7 @@ const publish = () => {
         <nav v-if="batch.status === 'completed' && deliveries.links.length > 3" class="mt-6 flex flex-wrap gap-1">
             <Link v-for="link in deliveries.links" :key="link.label" :href="link.url || '#'" :class="['rounded px-3 py-2 text-sm', link.active ? 'bg-pineto-600 font-bold text-white' : 'bg-white text-slate-600 ring-1 ring-slate-200', !link.url && 'pointer-events-none opacity-50']" v-html="link.label" />
         </nav>
+        <p v-if="batch.status === 'completed' && !batch.can_delete" class="mt-6 rounded-xl bg-amber-50 px-5 py-4 text-sm text-amber-800 ring-1 ring-amber-200">Questa busta non può essere eliminata perché almeno un dipendente o atleta l’ha già visualizzata.</p>
 
         <section class="mt-6 overflow-hidden rounded-xl bg-white shadow-sm ring-1 ring-slate-200">
             <button v-if="batch.status === 'completed'" type="button" class="flex w-full items-center justify-between px-5 py-4 text-left hover:bg-slate-50" @click="assignmentsVisible = !assignmentsVisible">
