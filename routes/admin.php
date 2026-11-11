@@ -24,5 +24,14 @@ Route::middleware('admin')->group(function () {
     Route::post('payslips/{batch}/send-notification', [PayslipBatchController::class, 'sendNotification'])->name('payslips.send-notification');
     Route::delete('payslips/{batch}', [PayslipBatchController::class, 'destroy'])->name('payslips.destroy');
     Route::get('payslips/documents/{document}', [PayslipBatchController::class, 'document'])->name('payslips.documents.show');
+    Route::get('cuds', [PayslipBatchController::class, 'index'])->name('cuds.index');
+    Route::get('cuds/upload', [PayslipBatchController::class, 'create'])->name('cuds.create');
+    Route::post('cuds', [PayslipBatchController::class, 'store'])->name('cuds.store');
+    Route::get('cuds/{batch}', [PayslipBatchController::class, 'show'])->name('cuds.show');
+    Route::patch('cuds/{batch}', [PayslipBatchController::class, 'update'])->name('cuds.update');
+    Route::post('cuds/{batch}/publish', [PayslipBatchController::class, 'publish'])->name('cuds.publish');
+    Route::post('cuds/{batch}/send-notification', [PayslipBatchController::class, 'sendNotification'])->name('cuds.send-notification');
+    Route::delete('cuds/{batch}', [PayslipBatchController::class, 'destroy'])->name('cuds.destroy');
+    Route::get('cuds/documents/{document}', [PayslipBatchController::class, 'document'])->name('cuds.documents.show');
     Route::post('/logout', [AdminAuthenticatedSessionController::class, 'destroy'])->name('logout');
 });

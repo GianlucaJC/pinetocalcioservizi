@@ -17,5 +17,5 @@ export function notificationConfirmation(pending, sent, hasReplacedDocuments, af
         ? 'Inviare una email ai destinatari di questo lotto?'
         : `Inviare una email ai ${pending} destinatari non ancora notificati per questo lotto?`;
 
-    return text + (!afterPublication && hasReplacedDocuments ? ' Le buste sostituite da rettifiche sono escluse.' : '');
+    return text + (!afterPublication && hasReplacedDocuments ? ' I documenti sostituiti da rettifiche sono esclusi.' : '');
 }

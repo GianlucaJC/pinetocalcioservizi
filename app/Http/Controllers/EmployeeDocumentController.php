@@ -25,7 +25,9 @@ class EmployeeDocumentController extends Controller
 
         $documents = $profile->documents()
             ->where('is_visible_to_employee', true)
-            ->when($filters['type'] ?? null, fn ($query, $type) => $query->where('document_type', $type))
+            ->when($filters['type'] ?? null, fn ($query, $type) => $type === 'payslip'
+                ? $query->whereIn('document_type', ['payslip', 'thirteenth'])
+                : $query->where('document_type', $type))
             ->when($filters['year'] ?? null, fn ($query, $year) => $query->where('period_year', $year))
             ->when($filters['search'] ?? null, fn ($query, $search) => $query->where('title', 'like', '%'.$search.'%'))
             ->orderByDesc('period_year')
@@ -50,7 +52,7 @@ class EmployeeDocumentController extends Controller
                 'search' => $filters['search'] ?? '',
             ],
             'years' => $profile->documents()
-                    ->where('is_visible_to_employee', true)
+                ->where('is_visible_to_employee', true)
                 ->whereNotNull('period_year')
                 ->distinct()
                 ->orderByDesc('period_year')

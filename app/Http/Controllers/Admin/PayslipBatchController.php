@@ -30,16 +30,24 @@ class PayslipBatchController extends Controller
 
     public function index(Request $request): Response
     {
+        $area = $this->area();
         $filters = $request->validate([
             'period_year' => ['nullable', 'integer', 'min:2000', 'max:2100'],
-            'period_month' => ['nullable', 'integer', 'between:1,12'],
+            'period_month' => $area === 'cuds' ? ['prohibited'] : ['nullable', 'integer', 'between:1,13'],
         ]);
 
         return Inertia::render('Admin/Payslips/Index', [
+            'area' => $area,
             'batches' => DocumentBatch::query()
-                ->where('document_type', 'payslip')
+                ->whereIn('document_type', $area === 'cuds' ? ['cud'] : ['payslip', 'thirteenth'])
                 ->when($filters['period_year'] ?? null, fn ($query, int $year) => $query->where('period_year', $year))
-                ->when($filters['period_month'] ?? null, fn ($query, int $month) => $query->where('period_month', $month))
+                ->when($filters['period_month'] ?? null, function ($query, int $month) {
+                    if ($month === 13) {
+                        $query->where('document_type', 'thirteenth');
+                    } else {
+                        $query->where('document_type', 'payslip')->where('period_month', $month);
+                    }
+                })
                 ->latest()
                 ->paginate(self::BATCHES_PER_PAGE)
                 ->withQueryString()
@@ -53,21 +61,23 @@ class PayslipBatchController extends Controller
 
     public function create(): Response
     {
-        return Inertia::render('Admin/Payslips/Upload');
+        return Inertia::render('Admin/Payslips/Upload', ['area' => $this->area()]);
     }
 
     public function store(Request $request, PayslipPdfService $payslipPdfService): RedirectResponse
     {
+        $area = $this->area();
         $data = $request->validate([
             'file' => ['required', 'file', 'mimes:pdf', 'max:51200'],
             'period_year' => ['required', 'integer', 'min:2000', 'max:2100'],
-            'period_month' => ['required', 'integer', 'between:1,12'],
+            'period_month' => $area === 'cuds' ? ['prohibited'] : ['required', 'integer', 'between:1,13'],
         ]);
+        $documentType = $area === 'cuds' ? 'cud' : ((int) $data['period_month'] === 13 ? 'thirteenth' : 'payslip');
 
         /** @var UploadedFile $file */
         $file = $data['file'];
         try {
-            $segments = $payslipPdfService->analyze($file->getRealPath());
+            $segments = $payslipPdfService->analyze($file->getRealPath(), $area !== 'cuds');
         } catch (PayslipTextExtractionException $exception) {
             throw ValidationException::withMessages(['file' => $exception->getMessage()]);
         }
@@ -93,19 +103,19 @@ class PayslipBatchController extends Controller
         $batch = DocumentBatch::create([
             'original_filename' => $file->getClientOriginalName(),
             'storage_path' => $sourcePath,
-            'document_type' => 'payslip',
+            'document_type' => $documentType,
             'period_year' => $data['period_year'],
-            'period_month' => $data['period_month'],
+            'period_month' => $documentType === 'payslip' ? $data['period_month'] : null,
             'status' => 'review',
             'metadata' => ['segments' => $segments],
         ]);
 
-        return redirect()->route('admin.payslips.show', $batch);
+        return redirect()->route('admin.'.$area.'.show', $batch);
     }
 
     public function show(Request $request, DocumentBatch $batch): Response
     {
-        $this->ensurePayslipBatch($batch);
+        $this->ensureBatchForArea($batch);
 
         $notificationCounts = $batch->status === 'completed'
             ? $batch->documents()
@@ -116,6 +126,7 @@ class PayslipBatchController extends Controller
         $pendingNotifications = (int) ($notificationCounts?->pending ?? 0);
 
         return Inertia::render('Admin/Payslips/Review', [
+            'area' => $this->area(),
             'batch' => $this->batchData($batch),
             'deliveries' => $batch->documents()
                 ->with([
@@ -155,7 +166,7 @@ class PayslipBatchController extends Controller
 
     public function update(Request $request, DocumentBatch $batch): RedirectResponse
     {
-        $this->ensurePayslipBatch($batch);
+        $this->ensureBatchForArea($batch);
         abort_unless($batch->status === 'review', 409);
 
         $data = $request->validate([
@@ -173,12 +184,12 @@ class PayslipBatchController extends Controller
 
         $batch->update(['metadata' => ['segments' => $segments]]);
 
-        return redirect()->route('admin.payslips.show', $batch)->with('success', 'Assegnazioni aggiornate.');
+        return redirect()->route('admin.'.$this->area().'.show', $batch)->with('success', 'Assegnazioni aggiornate.');
     }
 
     public function publish(DocumentBatch $batch, PayslipPdfService $payslipPdfService): RedirectResponse
     {
-        $this->ensurePayslipBatch($batch);
+        $this->ensureBatchForArea($batch);
         abort_unless($batch->status === 'review', 409);
 
         $segments = $batch->metadata['segments'] ?? [];
@@ -186,14 +197,14 @@ class PayslipBatchController extends Controller
 
         DB::transaction(function () use ($batch, $segments, $payslipPdfService, &$published) {
             $hasPublishedPayslips = EmployeeDocument::query()
-                ->where('document_type', 'payslip')
+                ->where('document_type', $batch->document_type)
                 ->where('period_year', $batch->period_year)
                 ->where('period_month', $batch->period_month)
                 ->where('is_visible_to_employee', true)
                 ->exists();
             $revisionNumber = $hasPublishedPayslips
                 ? DocumentBatch::query()
-                    ->where('document_type', 'payslip')
+                    ->where('document_type', $batch->document_type)
                     ->where('period_year', $batch->period_year)
                     ->where('period_month', $batch->period_month)
                     ->where('status', 'completed')
@@ -216,25 +227,25 @@ class PayslipBatchController extends Controller
                 $document = EmployeeDocument::create([
                     'employee_profile_id' => $segment['employee_profile_id'],
                     'document_batch_id' => $batch->id,
-                    'document_type' => 'payslip',
-                    'title' => 'Busta paga - '.$batch->period_month.'/'.$batch->period_year
+                    'document_type' => $batch->document_type,
+                    'title' => $this->documentTitle($batch)
                         .($revisionNumber > 0 ? ' - Rettifica n. '.$revisionNumber : ''),
                     'tax_code' => $profile->tax_code,
                     'period_year' => $batch->period_year,
                     'period_month' => $batch->period_month,
                     'storage_path' => $documentPath,
-                    'original_filename' => 'busta-paga-'.$batch->period_year.'-'.str_pad((string) $batch->period_month, 2, '0', STR_PAD_LEFT).'.pdf',
+                    'original_filename' => $this->documentFilename($batch),
                     'first_page' => $segment['first_page'],
                     'last_page' => $segment['last_page'],
                 ]);
 
                 EmployeeDocument::query()
                     ->where('employee_profile_id', $segment['employee_profile_id'])
-                    ->where('document_type', 'payslip')
+                    ->where('document_type', $batch->document_type)
                     ->where('period_year', $batch->period_year)
                     ->where('period_month', $batch->period_month)
                     ->where('is_visible_to_employee', true)
-                    ->where('document_batch_id', '!=', $batch->id)
+                    ->where(fn ($query) => $query->whereNull('document_batch_id')->orWhere('document_batch_id', '!=', $batch->id))
                     ->whereKeyNot($document->id)
                     ->update([
                         'is_visible_to_employee' => false,
@@ -250,12 +261,12 @@ class PayslipBatchController extends Controller
             ]);
         });
 
-        return redirect()->route('admin.payslips.index')->with('success', $published.' buste paga pubblicate. Gli elementi non riconosciuti restano nel lotto per revisione.');
+        return redirect()->route('admin.'.$this->area().'.index')->with('success', $published.' documenti pubblicati. Gli elementi non riconosciuti restano nel lotto per revisione.');
     }
 
     public function destroy(DocumentBatch $batch): RedirectResponse
     {
-        $this->ensurePayslipBatch($batch);
+        $this->ensureBatchForArea($batch);
 
         DB::transaction(function () use ($batch) {
             $batch = DocumentBatch::query()->lockForUpdate()->findOrFail($batch->id);
@@ -270,7 +281,7 @@ class PayslipBatchController extends Controller
             foreach ($documents as $document) {
                 EmployeeDocument::query()
                     ->where('replaced_by_document_id', $document->id)
-                    ->where('document_batch_id', '!=', $batch->id)
+                    ->where(fn ($query) => $query->whereNull('document_batch_id')->orWhere('document_batch_id', '!=', $batch->id))
                     ->update([
                         'is_visible_to_employee' => $document->replaced_by_document_id === null,
                         'replaced_by_document_id' => $document->replaced_by_document_id,
@@ -286,12 +297,12 @@ class PayslipBatchController extends Controller
             $batch->delete();
         });
 
-        return redirect()->route('admin.payslips.index')->with('success', 'Busta eliminata.');
+        return redirect()->route('admin.'.$this->area().'.index')->with('success', 'Lotto eliminato.');
     }
 
     public function sendNotification(DocumentBatch $batch): JsonResponse
     {
-        $this->ensurePayslipBatch($batch);
+        $this->ensureBatchForArea($batch);
         abort_unless($batch->status === 'completed' && $batch->documents()->exists(), 409);
 
         $profileIds = $batch->documents()
@@ -317,7 +328,7 @@ class PayslipBatchController extends Controller
                         return false;
                     }
 
-                    $profile->user->notify(new PayslipPublished($batch->period_month, $batch->period_year));
+                    $profile->user->notify(new PayslipPublished($batch->period_month, $batch->period_year, $batch->document_type));
                     $documents->update(['notification_sent_at' => now()]);
 
                     return true;
@@ -337,7 +348,7 @@ class PayslipBatchController extends Controller
 
     public function document(EmployeeDocument $document): StreamedResponse
     {
-        abort_unless($document->document_type === 'payslip', 404);
+        abort_unless(in_array($document->document_type, $this->area() === 'cuds' ? ['cud'] : ['payslip', 'thirteenth'], true), 404);
         abort_unless(Storage::disk('local')->exists($document->storage_path), 404);
 
         return Storage::disk('local')->response($document->storage_path, $document->original_filename, [
@@ -353,6 +364,7 @@ class PayslipBatchController extends Controller
         return [
             'id' => $batch->id,
             'original_filename' => $batch->original_filename,
+            'document_type' => $batch->document_type,
             'period_year' => $batch->period_year,
             'period_month' => $batch->period_month,
             'status' => $batch->status,
@@ -365,8 +377,31 @@ class PayslipBatchController extends Controller
         ];
     }
 
-    private function ensurePayslipBatch(DocumentBatch $batch): void
+    private function area(): string
     {
-        abort_unless($batch->document_type === 'payslip', 404);
+        return request()->routeIs('admin.cuds.*') ? 'cuds' : 'payslips';
+    }
+
+    private function ensureBatchForArea(DocumentBatch $batch): void
+    {
+        abort_unless(in_array($batch->document_type, $this->area() === 'cuds' ? ['cud'] : ['payslip', 'thirteenth'], true), 404);
+    }
+
+    private function documentTitle(DocumentBatch $batch): string
+    {
+        return match ($batch->document_type) {
+            'cud' => 'Certificazione Unica - redditi '.$batch->period_year,
+            'thirteenth' => 'Tredicesima - '.$batch->period_year,
+            'payslip' => 'Busta paga - '.$batch->period_month.'/'.$batch->period_year,
+        };
+    }
+
+    private function documentFilename(DocumentBatch $batch): string
+    {
+        return match ($batch->document_type) {
+            'cud' => 'certificazione-unica-redditi-'.$batch->period_year.'.pdf',
+            'thirteenth' => 'tredicesima-'.$batch->period_year.'.pdf',
+            'payslip' => 'busta-paga-'.$batch->period_year.'-'.str_pad((string) $batch->period_month, 2, '0', STR_PAD_LEFT).'.pdf',
+        };
     }
 }

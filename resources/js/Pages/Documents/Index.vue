@@ -21,6 +21,7 @@ const applyFilters = () => {
 
 const documentLabels = {
     payslip: 'Busta paga',
+    thirteenth: 'Tredicesima',
     cud: 'CU/CUD',
     other: 'Altro documento',
 };
@@ -31,7 +32,7 @@ const formatPeriod = (document) => {
     }
 
     if (!document.period_month) {
-        return String(document.period_year);
+        return document.type === 'cud' ? `Redditi ${document.period_year}` : String(document.period_year);
     }
 
     return new Intl.DateTimeFormat('it-IT', { month: 'long', year: 'numeric' })

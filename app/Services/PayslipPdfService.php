@@ -4,12 +4,12 @@ namespace App\Services;
 
 use App\Exceptions\PayslipTextExtractionException;
 use Illuminate\Support\Facades\Process;
-use setasign\Fpdi\Tcpdf\Fpdi;
 use Illuminate\Support\Facades\Storage;
+use setasign\Fpdi\Tcpdf\Fpdi;
 
 class PayslipPdfService
 {
-    public function analyze(string $sourcePath): array
+    public function analyze(string $sourcePath, bool $groupUnrecognized = true): array
     {
         $pages = explode("\f", rtrim($this->extractText($sourcePath), "\f \t\r\n"));
 
@@ -20,8 +20,9 @@ class PayslipPdfService
             $taxCodes = $this->taxCodesFromText($text);
             $taxCode = count($taxCodes) === 1 ? $taxCodes[0] : null;
 
-            if ($currentSegment !== null && $currentSegment['tax_code'] === $taxCode) {
+            if ($currentSegment !== null && $currentSegment['tax_code'] === $taxCode && ($taxCode !== null || $groupUnrecognized)) {
                 $currentSegment['last_page'] = $index + 1;
+
                 continue;
             }
 
@@ -69,7 +70,7 @@ class PayslipPdfService
     {
         Storage::disk('local')->makeDirectory(dirname($destinationPath));
 
-        $pdf = new Fpdi();
+        $pdf = new Fpdi;
         $pdf->setSourceFile($sourcePath);
 
         foreach ($pages as $page) {

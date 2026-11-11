@@ -12,6 +12,6 @@ test('notification action reflects unsent, partial, completed and empty batches'
 test('confirmation mentions corrections only for an existing batch with replaced documents', () => {
     assert.equal(notificationConfirmation(4, 0, false, false), 'Inviare una email ai destinatari di questo lotto?');
     assert.equal(notificationConfirmation(2, 3, false, false), 'Inviare una email ai 2 destinatari non ancora notificati per questo lotto?');
-    assert.equal(notificationConfirmation(2, 3, true, false), 'Inviare una email ai 2 destinatari non ancora notificati per questo lotto? Le buste sostituite da rettifiche sono escluse.');
+    assert.equal(notificationConfirmation(2, 3, true, false), 'Inviare una email ai 2 destinatari non ancora notificati per questo lotto? I documenti sostituiti da rettifiche sono esclusi.');
     assert.equal(notificationConfirmation(0, 0, false, true), 'Inviare una email ai destinatari di questo lotto?');
 });

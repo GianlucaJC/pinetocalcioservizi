@@ -45,4 +45,17 @@ class PayslipPdfServiceTest extends TestCase
 
         app(PayslipPdfService::class)->analyze('source.pdf');
     }
+
+    public function test_unidentified_cud_pages_are_not_combined_into_one_assignment(): void
+    {
+        Process::fake([
+            '*' => Process::result("Pagina senza codice\fAltra pagina senza codice\f"),
+        ]);
+
+        $segments = app(PayslipPdfService::class)->analyze('source.pdf', false);
+
+        $this->assertCount(2, $segments);
+        $this->assertSame([1, 2], array_column($segments, 'first_page'));
+        $this->assertSame([1, 2], array_column($segments, 'last_page'));
+    }
 }

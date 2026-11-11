@@ -10,6 +10,7 @@ const props = defineProps({
     batch: Object,
     profiles: Array,
     deliveries: Object,
+    area: String,
     pending_notifications_count: Number,
     sent_notifications_count: Number,
     has_replaced_documents: Boolean,
@@ -20,13 +21,19 @@ const form = useForm({ assignments });
 const assignmentsVisible = ref(props.batch.status === 'review');
 const publishing = ref(false);
 const notificationAction = computed(() => notificationStatus(props.pending_notifications_count, props.sent_notifications_count));
+const isCud = props.area === 'cuds';
+const periodLabel = props.batch.document_type === 'cud'
+    ? `Redditi ${props.batch.period_year}`
+    : props.batch.document_type === 'thirteenth'
+        ? `Tredicesima ${props.batch.period_year}`
+        : `${props.batch.period_month}/${props.batch.period_year}`;
 
-const saveAssignments = () => form.patch(route('admin.payslips.update', props.batch.id));
+const saveAssignments = () => form.patch(route(`admin.${props.area}.update`, props.batch.id));
 
 const sendNotifications = async (batchId, afterPublication = false) => {
     let attempted = false;
     const result = await Swal.fire({
-        title: afterPublication ? 'Buste paga pubblicate' : 'Invia notifiche',
+        title: afterPublication ? 'Documenti pubblicati' : 'Invia notifiche',
         text: notificationConfirmation(props.pending_notifications_count, props.sent_notifications_count, props.has_replaced_documents, afterPublication),
         icon: 'question',
         showCancelButton: true,
@@ -37,7 +44,7 @@ const sendNotifications = async (batchId, afterPublication = false) => {
         preConfirm: async () => {
             attempted = true;
             try {
-                const response = await axios.post(route('admin.payslips.send-notification', batchId));
+                const response = await axios.post(route(`admin.${props.area}.send-notification`, batchId));
                 if (!Number.isInteger(response.data?.sent_count) || !Array.isArray(response.data?.failed)) {
                     throw new Error('Risposta inattesa dal server.');
                 }
@@ -69,10 +76,10 @@ const sendNotifications = async (batchId, afterPublication = false) => {
 };
 
 const publish = () => {
-    if (confirm(`Pubblicare ${props.batch.assignable_count} buste riconosciute? Le ${props.batch.unmatched_count} non assegnate non verranno pubblicate.`)) {
+    if (confirm(`Pubblicare ${props.batch.assignable_count} documenti riconosciuti? I ${props.batch.unmatched_count} non assegnati non verranno pubblicati.`)) {
         publishing.value = true;
         const batchId = props.batch.id;
-        router.post(route('admin.payslips.publish', batchId), {}, {
+        router.post(route(`admin.${props.area}.publish`, batchId), {}, {
             onSuccess: () => sendNotifications(batchId, true),
             onFinish: () => { publishing.value = false; },
         });
@@ -80,28 +87,28 @@ const publish = () => {
 };
 
 const destroy = () => {
-    if (confirm('Eliminare questa busta e tutte le buste pubblicate? Le buste precedenti sostituite saranno ripristinate, salvo rettifiche successive. L’operazione non può essere annullata.')) {
-        router.delete(route('admin.payslips.destroy', props.batch.id));
+    if (confirm('Eliminare questo lotto e tutti i documenti pubblicati? I documenti precedenti sostituiti saranno ripristinati, salvo rettifiche successive. L’operazione non può essere annullata.')) {
+        router.delete(route(`admin.${props.area}.destroy`, props.batch.id));
     }
 };
 </script>
 
 <template>
-    <Head title="Revisione buste paga" />
+    <Head :title="isCud ? 'Revisione CU/CUD' : 'Revisione buste paga'" />
     <AdminLayout>
         <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div>
-                <h1 class="text-2xl font-bold text-slate-950">{{ batch.status === 'completed' ? 'Dettaglio buste' : 'Revisione buste' }}</h1>
-                <p class="mt-1 text-sm text-slate-600">{{ batch.original_filename }} · {{ batch.period_month }}/{{ batch.period_year }}</p>
+                <h1 class="text-2xl font-bold text-slate-950">{{ batch.status === 'completed' ? 'Dettaglio documenti' : 'Revisione documenti' }}</h1>
+                <p class="mt-1 text-sm text-slate-600">{{ batch.original_filename }} · {{ periodLabel }}</p>
             </div>
             <div class="flex items-center gap-4">
-                <button v-if="batch.can_delete" type="button" class="text-sm font-semibold text-red-700 hover:text-red-900" @click="destroy">Elimina busta</button>
-                <Link :href="route('admin.payslips.index')" class="text-sm font-semibold text-pineto-700 hover:text-pineto-900">Torna alle buste</Link>
+                <button v-if="batch.can_delete" type="button" class="text-sm font-semibold text-red-700 hover:text-red-900" @click="destroy">Elimina lotto</button>
+                <Link :href="route(`admin.${area}.index`)" class="text-sm font-semibold text-pineto-700 hover:text-pineto-900">Torna alla consultazione</Link>
             </div>
         </div>
 
         <div class="mt-6 grid gap-4 sm:grid-cols-2">
-            <div class="rounded-xl bg-emerald-50 p-5 ring-1 ring-emerald-200"><p class="text-sm font-semibold text-emerald-800">Buste assegnabili</p><p class="mt-1 text-3xl font-bold text-emerald-900">{{ batch.assignable_count }}</p></div>
+            <div class="rounded-xl bg-emerald-50 p-5 ring-1 ring-emerald-200"><p class="text-sm font-semibold text-emerald-800">Documenti assegnabili</p><p class="mt-1 text-3xl font-bold text-emerald-900">{{ batch.assignable_count }}</p></div>
             <div class="rounded-xl bg-amber-50 p-5 ring-1 ring-amber-200"><p class="text-sm font-semibold text-amber-800">Da verificare</p><p class="mt-1 text-3xl font-bold text-amber-900">{{ batch.unmatched_count }}</p></div>
         </div>
 
@@ -109,14 +116,14 @@ const destroy = () => {
             <div class="flex flex-col gap-3 border-b border-slate-100 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                     <h2 class="font-bold text-slate-900">Invii ai dipendenti e atleti</h2>
-                    <p class="mt-1 text-sm text-slate-600">Stato delle notifiche e della prima visualizzazione delle buste pubblicate con questo invio.</p>
+                    <p class="mt-1 text-sm text-slate-600">Stato delle notifiche e della prima visualizzazione dei documenti pubblicati con questo invio.</p>
                     <p class="mt-1 text-sm text-slate-600">Notifiche inviate: {{ sent_notifications_count }} · Destinatari da notificare: {{ pending_notifications_count }}</p>
-                    <p v-if="has_replaced_documents" class="mt-1 text-sm text-slate-600">Le buste sostituite da rettifiche sono escluse dalle notifiche di questo lotto.</p>
+                    <p v-if="has_replaced_documents" class="mt-1 text-sm text-slate-600">I documenti sostituiti da rettifiche sono esclusi dalle notifiche di questo lotto.</p>
                 </div>
                 <button v-if="notificationAction.canSend" type="button" class="rounded-lg bg-pineto-600 px-4 py-2 text-sm font-bold text-white hover:bg-pineto-700" @click="sendNotifications(batch.id)">{{ notificationAction.label }}</button>
                 <span v-else :class="sent_notifications_count > 0 ? 'rounded-full bg-emerald-50 px-3 py-1 text-sm font-bold text-emerald-700' : 'text-sm font-semibold text-slate-600'">{{ notificationAction.label }}</span>
             </div>
-            <div v-if="deliveries.data.length === 0" class="p-5 text-sm text-slate-500">Non è stata pubblicata alcuna busta in questo lotto.</div>
+            <div v-if="deliveries.data.length === 0" class="p-5 text-sm text-slate-500">Non è stato pubblicato alcun documento in questo lotto.</div>
             <div v-else class="divide-y divide-slate-100">
                 <article v-for="delivery in deliveries.data" :key="delivery.id" class="flex flex-col gap-3 p-5 sm:flex-row sm:items-center sm:justify-between">
                     <div>
@@ -128,7 +135,7 @@ const destroy = () => {
                         <span v-if="!delivery.is_visible_to_employee" class="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold text-slate-700">Sostituita dalla rettifica n. {{ delivery.replaced_by_revision_number }}</span>
                         <span v-else class="rounded-full px-3 py-1 text-xs font-bold" :class="delivery.notification_sent_at ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'">{{ delivery.notification_sent_at ? `Notifica inviata il ${delivery.notification_sent_at}` : 'Notifica da inviare' }}</span>
                         <span class="rounded-full px-3 py-1 text-xs font-bold" :class="delivery.viewed_at ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'">{{ delivery.viewed_at ? `Visionata il ${delivery.viewed_at}` : 'Non ancora visionata' }}</span>
-                        <a :href="route('admin.payslips.documents.show', delivery.id)" target="_blank" rel="noopener" class="rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">Apri busta</a>
+                        <a :href="route(`admin.${area}.documents.show`, delivery.id)" target="_blank" rel="noopener" class="rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">Apri documento</a>
                     </div>
                 </article>
             </div>
@@ -136,12 +143,12 @@ const destroy = () => {
         <nav v-if="batch.status === 'completed' && deliveries.links.length > 3" class="mt-6 flex flex-wrap gap-1">
             <Link v-for="link in deliveries.links" :key="link.label" :href="link.url || '#'" :class="['rounded px-3 py-2 text-sm', link.active ? 'bg-pineto-600 font-bold text-white' : 'bg-white text-slate-600 ring-1 ring-slate-200', !link.url && 'pointer-events-none opacity-50']" v-html="link.label" />
         </nav>
-        <p v-if="batch.status === 'completed' && !batch.can_delete" class="mt-6 rounded-xl bg-amber-50 px-5 py-4 text-sm text-amber-800 ring-1 ring-amber-200">Questa busta non può essere eliminata perché almeno un dipendente o atleta l’ha già visualizzata.</p>
+        <p v-if="batch.status === 'completed' && !batch.can_delete" class="mt-6 rounded-xl bg-amber-50 px-5 py-4 text-sm text-amber-800 ring-1 ring-amber-200">Questo lotto non può essere eliminato perché almeno un dipendente o atleta ha già visualizzato un documento.</p>
 
         <section class="mt-6 overflow-hidden rounded-xl bg-white shadow-sm ring-1 ring-slate-200">
             <button v-if="batch.status === 'completed'" type="button" class="flex w-full items-center justify-between px-5 py-4 text-left hover:bg-slate-50" @click="assignmentsVisible = !assignmentsVisible">
                 <span>
-                    <span class="block font-bold text-slate-900">Assegnazioni delle buste</span>
+                    <span class="block font-bold text-slate-900">Assegnazioni dei documenti</span>
                     <span class="mt-1 block text-sm text-slate-600">Codici fiscali e pagine associate durante l’elaborazione.</span>
                 </span>
                 <span class="text-sm font-semibold text-pineto-700">{{ assignmentsVisible ? 'Nascondi' : 'Mostra' }}</span>
@@ -166,7 +173,7 @@ const destroy = () => {
 
         <div v-if="batch.status === 'review'" class="mt-6 flex flex-wrap justify-end gap-3">
             <button type="button" :disabled="form.processing" class="rounded-lg border border-slate-300 px-4 py-2 text-sm font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-50" @click="saveAssignments">Salva assegnazioni</button>
-            <button type="button" :disabled="batch.assignable_count === 0 || publishing" class="rounded-lg bg-pineto-600 px-4 py-2 text-sm font-bold text-white hover:bg-pineto-700 disabled:cursor-not-allowed disabled:opacity-50" @click="publish">Pubblica buste riconosciute</button>
+            <button type="button" :disabled="batch.assignable_count === 0 || publishing" class="rounded-lg bg-pineto-600 px-4 py-2 text-sm font-bold text-white hover:bg-pineto-700 disabled:cursor-not-allowed disabled:opacity-50" @click="publish">Pubblica documenti riconosciuti</button>
         </div>
     </AdminLayout>
 </template>
