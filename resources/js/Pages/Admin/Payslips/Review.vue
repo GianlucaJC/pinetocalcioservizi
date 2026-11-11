@@ -1,28 +1,86 @@
 <script setup>
 import AdminLayout from '@/Layouts/AdminLayout.vue';
 import { Head, Link, router, useForm } from '@inertiajs/vue3';
-import { ref } from 'vue';
+import axios from 'axios';
+import Swal from 'sweetalert2';
+import { computed, ref } from 'vue';
+import { notificationConfirmation, notificationStatus } from './notificationStatus';
 
 const props = defineProps({
     batch: Object,
     profiles: Array,
     deliveries: Object,
+    pending_notifications_count: Number,
+    sent_notifications_count: Number,
+    has_replaced_documents: Boolean,
 });
 
 const assignments = Object.fromEntries(props.batch.segments.map((segment, index) => [index, segment.employee_profile_id]));
 const form = useForm({ assignments });
 const assignmentsVisible = ref(props.batch.status === 'review');
+const publishing = ref(false);
+const notificationAction = computed(() => notificationStatus(props.pending_notifications_count, props.sent_notifications_count));
 
 const saveAssignments = () => form.patch(route('admin.payslips.update', props.batch.id));
 
+const sendNotifications = async (batchId, afterPublication = false) => {
+    let attempted = false;
+    const result = await Swal.fire({
+        title: afterPublication ? 'Buste paga pubblicate' : 'Invia notifiche',
+        text: notificationConfirmation(props.pending_notifications_count, props.sent_notifications_count, props.has_replaced_documents, afterPublication),
+        icon: 'question',
+        showCancelButton: true,
+        confirmButtonText: 'Invia email',
+        cancelButtonText: 'Non inviare',
+        showLoaderOnConfirm: true,
+        allowOutsideClick: () => !Swal.isLoading(),
+        preConfirm: async () => {
+            attempted = true;
+            try {
+                const response = await axios.post(route('admin.payslips.send-notification', batchId));
+                if (!Number.isInteger(response.data?.sent_count) || !Array.isArray(response.data?.failed)) {
+                    throw new Error('Risposta inattesa dal server.');
+                }
+                return response.data;
+            } catch (error) {
+                Swal.showValidationMessage('Invio non confermato. Controlla la sessione e lo stato delle notifiche nel dettaglio del lotto prima di riprovare.');
+                return false;
+            }
+        },
+    });
+
+    if (result.isConfirmed) {
+        const { sent_count, failed } = result.value;
+        if (failed.length > 0) {
+            await Swal.fire({
+                title: 'Alcune notifiche non sono state inviate',
+                text: `Email inviate: ${sent_count}. Da riprovare: ${failed.map((recipient) => `${recipient.name} (${recipient.email})`).join(', ')}.`,
+                icon: 'warning',
+            });
+        } else {
+            await Swal.fire('Invio completato', `Email inviate: ${sent_count}.`, 'success');
+        }
+
+    }
+
+    if (!afterPublication && attempted) {
+        router.reload({ only: ['pending_notifications_count', 'sent_notifications_count', 'has_replaced_documents', 'deliveries'] });
+    }
+};
+
 const publish = () => {
     if (confirm(`Pubblicare ${props.batch.assignable_count} buste riconosciute? Le ${props.batch.unmatched_count} non assegnate non verranno pubblicate.`)) {
-        router.post(route('admin.payslips.publish', props.batch.id));
+        publishing.value = true;
+        const batchId = props.batch.id;
+        router.post(route('admin.payslips.publish', batchId), {}, {
+            onSuccess: () => sendNotifications(batchId, true),
+            onFinish: () => { publishing.value = false; },
+        });
     }
 };
 
 const destroy = () => {
-    if (confirm('Eliminare questa busta e tutte le buste pubblicate? L’operazione non può essere annullata.')) {
+    if (confirm('Eliminare questa busta e tutte le buste pubblicate? Le buste precedenti sostituite saranno ripristinate, salvo rettifiche successive. L’operazione non può essere annullata.')) {
         router.delete(route('admin.payslips.destroy', props.batch.id));
     }
 };
@@ -48,9 +106,15 @@ const destroy = () => {
         </div>
 
         <section v-if="batch.status === 'completed'" class="mt-6 overflow-hidden rounded-xl bg-white shadow-sm ring-1 ring-slate-200">
-            <div class="border-b border-slate-100 px-5 py-4">
-                <h2 class="font-bold text-slate-900">Invii ai dipendenti e atleti</h2>
-                <p class="mt-1 text-sm text-slate-600">Stato di prima visualizzazione delle buste pubblicate con questo invio.</p>
+            <div class="flex flex-col gap-3 border-b border-slate-100 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                    <h2 class="font-bold text-slate-900">Invii ai dipendenti e atleti</h2>
+                    <p class="mt-1 text-sm text-slate-600">Stato delle notifiche e della prima visualizzazione delle buste pubblicate con questo invio.</p>
+                    <p class="mt-1 text-sm text-slate-600">Notifiche inviate: {{ sent_notifications_count }} · Destinatari da notificare: {{ pending_notifications_count }}</p>
+                    <p v-if="has_replaced_documents" class="mt-1 text-sm text-slate-600">Le buste sostituite da rettifiche sono escluse dalle notifiche di questo lotto.</p>
+                </div>
+                <button v-if="notificationAction.canSend" type="button" class="rounded-lg bg-pineto-600 px-4 py-2 text-sm font-bold text-white hover:bg-pineto-700" @click="sendNotifications(batch.id)">{{ notificationAction.label }}</button>
+                <span v-else :class="sent_notifications_count > 0 ? 'rounded-full bg-emerald-50 px-3 py-1 text-sm font-bold text-emerald-700' : 'text-sm font-semibold text-slate-600'">{{ notificationAction.label }}</span>
             </div>
             <div v-if="deliveries.data.length === 0" class="p-5 text-sm text-slate-500">Non è stata pubblicata alcuna busta in questo lotto.</div>
             <div v-else class="divide-y divide-slate-100">
@@ -62,6 +126,7 @@ const destroy = () => {
                     </div>
                     <div class="flex flex-wrap items-center gap-3">
                         <span v-if="!delivery.is_visible_to_employee" class="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold text-slate-700">Sostituita dalla rettifica n. {{ delivery.replaced_by_revision_number }}</span>
+                        <span v-else class="rounded-full px-3 py-1 text-xs font-bold" :class="delivery.notification_sent_at ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'">{{ delivery.notification_sent_at ? `Notifica inviata il ${delivery.notification_sent_at}` : 'Notifica da inviare' }}</span>
                         <span class="rounded-full px-3 py-1 text-xs font-bold" :class="delivery.viewed_at ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'">{{ delivery.viewed_at ? `Visionata il ${delivery.viewed_at}` : 'Non ancora visionata' }}</span>
                         <a :href="route('admin.payslips.documents.show', delivery.id)" target="_blank" rel="noopener" class="rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">Apri busta</a>
                     </div>
@@ -101,7 +166,7 @@ const destroy = () => {
 
         <div v-if="batch.status === 'review'" class="mt-6 flex flex-wrap justify-end gap-3">
             <button type="button" :disabled="form.processing" class="rounded-lg border border-slate-300 px-4 py-2 text-sm font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-50" @click="saveAssignments">Salva assegnazioni</button>
-            <button type="button" :disabled="batch.assignable_count === 0" class="rounded-lg bg-pineto-600 px-4 py-2 text-sm font-bold text-white hover:bg-pineto-700 disabled:cursor-not-allowed disabled:opacity-50" @click="publish">Pubblica buste riconosciute</button>
+            <button type="button" :disabled="batch.assignable_count === 0 || publishing" class="rounded-lg bg-pineto-600 px-4 py-2 text-sm font-bold text-white hover:bg-pineto-700 disabled:cursor-not-allowed disabled:opacity-50" @click="publish">Pubblica buste riconosciute</button>
         </div>
     </AdminLayout>
 </template>

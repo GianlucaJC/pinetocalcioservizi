@@ -43,6 +43,10 @@ In produzione, dopo aver modificato queste variabili, eseguire `php artisan conf
 
 Le sequenze riconosciute vengono associate automaticamente al relativo profilo. Le sequenze con un codice assente o non riconosciuto restano da verificare: l’admin può assegnarle manualmente a un dipendente o atleta, oppure lasciarle fuori dalla pubblicazione. Dopo la conferma, ogni utente vede esclusivamente la propria busta paga nell’area documenti.
 
+Dopo la pubblicazione, l'admin può scegliere se inviare una notifica email individuale ai destinatari delle buste visibili, senza allegati, utilizzando la configurazione email dell'applicazione. Dal dettaglio del lotto in **Consultazione invii** può controllare quanti destinatari sono stati notificati e inviare le notifiche ancora da fare. Il pulsante indica se deve essere notificato l'intero lotto o solo i destinatari rimanenti; quando tutte le notifiche sono state inviate, mostra lo stato completato. Le buste sostituite da rettifiche sono escluse. Gli invii effettuati prima dell'introduzione di questa funzione non sono tracciati. Applicare la migrazione con `php artisan migrate`.
+
+Un lotto può essere eliminato solo se nessuna delle sue buste è stata visualizzata. Se si elimina una rettifica, le buste precedenti sostituite tornano visibili, a meno che siano state sostituite da una rettifica successiva. Le email già inviate non vengono ritirate.
+
 ## About Laravel
 
 Laravel is a web application framework with expressive, elegant syntax. We believe development must be an enjoyable and creative experience to be truly fulfilling. Laravel takes the pain out of development by easing common tasks used in many web projects, such as:

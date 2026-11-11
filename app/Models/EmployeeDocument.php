@@ -25,6 +25,7 @@ class EmployeeDocument extends Model
         'last_page',
         'metadata',
         'viewed_at',
+        'notification_sent_at',
         'is_visible_to_employee',
         'replaced_by_document_id',
     ];
@@ -33,6 +34,7 @@ class EmployeeDocument extends Model
         'issued_on' => 'date:Y-m-d',
         'metadata' => 'array',
         'viewed_at' => 'datetime',
+        'notification_sent_at' => 'datetime',
         'is_visible_to_employee' => 'boolean',
     ];
 

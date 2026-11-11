@@ -21,6 +21,7 @@ Route::middleware('admin')->group(function () {
     Route::get('payslips/{batch}', [PayslipBatchController::class, 'show'])->name('payslips.show');
     Route::patch('payslips/{batch}', [PayslipBatchController::class, 'update'])->name('payslips.update');
     Route::post('payslips/{batch}/publish', [PayslipBatchController::class, 'publish'])->name('payslips.publish');
+    Route::post('payslips/{batch}/send-notification', [PayslipBatchController::class, 'sendNotification'])->name('payslips.send-notification');
     Route::delete('payslips/{batch}', [PayslipBatchController::class, 'destroy'])->name('payslips.destroy');
     Route::get('payslips/documents/{document}', [PayslipBatchController::class, 'document'])->name('payslips.documents.show');
     Route::post('/logout', [AdminAuthenticatedSessionController::class, 'destroy'])->name('logout');

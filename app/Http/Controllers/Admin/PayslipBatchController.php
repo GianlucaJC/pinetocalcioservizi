@@ -7,7 +7,9 @@ use App\Http\Controllers\Controller;
 use App\Models\DocumentBatch;
 use App\Models\EmployeeDocument;
 use App\Models\EmployeeProfile;
+use App\Notifications\PayslipPublished;
 use App\Services\PayslipPdfService;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
@@ -105,6 +107,14 @@ class PayslipBatchController extends Controller
     {
         $this->ensurePayslipBatch($batch);
 
+        $notificationCounts = $batch->status === 'completed'
+            ? $batch->documents()
+                ->where('is_visible_to_employee', true)
+                ->selectRaw('COUNT(DISTINCT employee_profile_id) AS total, COUNT(DISTINCT CASE WHEN notification_sent_at IS NULL THEN employee_profile_id END) AS pending')
+                ->first()
+            : null;
+        $pendingNotifications = (int) ($notificationCounts?->pending ?? 0);
+
         return Inertia::render('Admin/Payslips/Review', [
             'batch' => $this->batchData($batch),
             'deliveries' => $batch->documents()
@@ -123,9 +133,14 @@ class PayslipBatchController extends Controller
                     'first_page' => $document->first_page,
                     'last_page' => $document->last_page,
                     'viewed_at' => $document->viewed_at?->format('d/m/Y H:i'),
+                    'notification_sent_at' => $document->notification_sent_at?->format('d/m/Y H:i'),
                     'is_visible_to_employee' => $document->is_visible_to_employee,
                     'replaced_by_revision_number' => $document->replacedByDocument?->batch?->revision_number,
                 ]),
+            'pending_notifications_count' => $pendingNotifications,
+            'sent_notifications_count' => (int) ($notificationCounts?->total ?? 0) - $pendingNotifications,
+            'has_replaced_documents' => $batch->status === 'completed'
+                && $batch->documents()->where('is_visible_to_employee', false)->exists(),
             'profiles' => EmployeeProfile::query()
                 ->with('user:id,first_name,last_name')
                 ->orderBy('tax_code')
@@ -252,6 +267,16 @@ class PayslipBatchController extends Controller
                 'Non puoi eliminare una busta già visualizzata da un dipendente o atleta.',
             );
 
+            foreach ($documents as $document) {
+                EmployeeDocument::query()
+                    ->where('replaced_by_document_id', $document->id)
+                    ->where('document_batch_id', '!=', $batch->id)
+                    ->update([
+                        'is_visible_to_employee' => $document->replaced_by_document_id === null,
+                        'replaced_by_document_id' => $document->replaced_by_document_id,
+                    ]);
+            }
+
             Storage::disk('local')->delete([
                 $batch->storage_path,
                 ...$documents->pluck('storage_path')->all(),
@@ -262,6 +287,52 @@ class PayslipBatchController extends Controller
         });
 
         return redirect()->route('admin.payslips.index')->with('success', 'Busta eliminata.');
+    }
+
+    public function sendNotification(DocumentBatch $batch): JsonResponse
+    {
+        $this->ensurePayslipBatch($batch);
+        abort_unless($batch->status === 'completed' && $batch->documents()->exists(), 409);
+
+        $profileIds = $batch->documents()
+            ->where('is_visible_to_employee', true)
+            ->whereNull('notification_sent_at')
+            ->distinct()
+            ->pluck('employee_profile_id');
+        $sent = 0;
+        $failed = [];
+
+        foreach ($profileIds as $profileId) {
+            $profile = EmployeeProfile::with('user')->findOrFail($profileId);
+
+            try {
+                $wasSent = DB::transaction(function () use ($batch, $profile) {
+                    EmployeeProfile::whereKey($profile->id)->lockForUpdate()->firstOrFail();
+                    $documents = $batch->documents()
+                        ->where('employee_profile_id', $profile->id)
+                        ->where('is_visible_to_employee', true)
+                        ->whereNull('notification_sent_at');
+
+                    if (! $documents->exists()) {
+                        return false;
+                    }
+
+                    $profile->user->notify(new PayslipPublished($batch->period_month, $batch->period_year));
+                    $documents->update(['notification_sent_at' => now()]);
+
+                    return true;
+                });
+                $sent += (int) $wasSent;
+            } catch (\Throwable $exception) {
+                report($exception);
+                $failed[] = [
+                    'name' => $profile->user->full_name,
+                    'email' => $profile->user->email,
+                ];
+            }
+        }
+
+        return response()->json(['sent_count' => $sent, 'failed' => $failed]);
     }
 
     public function document(EmployeeDocument $document): StreamedResponse
